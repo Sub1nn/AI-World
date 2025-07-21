@@ -2,7 +2,7 @@
 <!--  Hands-on curriculum for Artificial Intelligence & Machine Learning  -->
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Sub1nn/https://github.com/Sub1nn/AI-World/main/assets/banner.png" width="85%" alt="AI-ML-Mastery banner"/>
+  <img src="https://raw.githubusercontent.com/Sub1nn/https://github.com/Sub1nn/AI-World/main/assets/banner.png" width="85%" alt="AI-World banner"/>
 </p>
 
 <p align="center">
@@ -89,7 +89,7 @@ streamlit run exercises/bmi_calculator.py
 ## 🎓 Exercises & Badges
 
 Solve exercises inside `exercises/` and push to a branch named `exercise/<name>`.  
-Our GitHub Action will award digital badges 🏅 automatically:
+Get Completion badges 🏅:
 
 ```text
 🥉 Completed “NumPy 101”
