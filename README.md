@@ -80,9 +80,10 @@ streamlit run exercises/bmi_calculator.py
 
 ## 📊 Sample Apps Already Live
 
-| App            | Tech      | Live Demo                     |
-| -------------- | --------- | ----------------------------- |
-| BMI Calculator | Streamlit | `exercises/bmi_calculator.py` |
+| App             | Tech                     | Live Demo                     |
+| --------------- | ------------------------ | ----------------------------- |
+| BMI Calculator  | Streamlit                | `exercises/bmi_calculator.py` |
+| Iris Classifier | Scikit-learn + Streamlit | `exercises/app.py`            |
 
 ---
 
