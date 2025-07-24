@@ -49,8 +49,8 @@ Answer:"""
     )
     return chain
 
-st.set_page_config(page_title="RésuméBot", page_icon="🤖")
-st.title("🤖 RésuméBot – ask about my CV or anything else")
+st.set_page_config(page_title="ChatBot", page_icon="🤖")
+st.title("🤖 My Personal ChatBot – ask about me or anything else")
 
 if "chain" not in st.session_state:
     st.session_state.chain = build_chain()
