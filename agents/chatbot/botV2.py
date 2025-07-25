@@ -14,9 +14,7 @@ load_dotenv()
 
 # Absolute paths
 RESUME_PDF = "./documents/resume_SubinKhatiwada.pdf"
-CHROMA_DIR = pathlib.Path(__file__).parent / "chroma"
-if os.path.exists(CHROMA_DIR):
-    shutil.rmtree(CHROMA_DIR)
+CHROMA_DIR = pathlib.Path(__file__).parent / "chroma_db"
 
 # Build / rebuild merged retrieve
 @st.cache_resource(show_spinner=False)
