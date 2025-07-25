@@ -1,4 +1,4 @@
-# bot.py
+# botV2.py
 import os, pathlib, tempfile, shutil, streamlit as st
 from langchain_chroma import Chroma
 from langchain_community.document_loaders import PyPDFLoader
@@ -7,14 +7,25 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain.prompts import PromptTemplate
 from langchain_core.runnables import RunnablePassthrough, RunnableLambda
 from langchain_groq import ChatGroq
+import subprocess
+import sys
 from dotenv import load_dotenv
-
 
 load_dotenv()
 
 # Absolute paths
 RESUME_PDF = "./documents/resume_SubinKhatiwada.pdf"
-CHROMA_DIR = pathlib.Path(__file__).parent / "chroma_db"
+CHROMA_DIR = os.path.join(os.path.dirname(__file__), "chroma_db")
+
+# Build chroma_db if it doesn't exist
+if not os.path.exists(CHROMA_DIR):
+    st.info("🏗️ Building vector database...")
+    try:
+        subprocess.run([sys.executable, "vectorizor.py"], check=True)
+        st.success("✅ Vector database built!")
+    except subprocess.CalledProcessError as e:
+        st.error(f"❌ Failed to build vector database: {e}")
+        st.stop()
 
 # Build / rebuild merged retrieve
 @st.cache_resource(show_spinner=False)
@@ -49,8 +60,26 @@ def build_merged_retriever(new_pdf_bytes=None):
 @st.cache_resource(show_spinner=False)
 def build_chain(new_pdf_bytes=None):
     retriever = build_merged_retriever(new_pdf_bytes)
-    llm = ChatGroq(model="llama3-70b-8192", temperature=0.7,
-                   groq_api_key=os.getenv("GROQ_API_KEY"))
+    
+    # Get API key from environment or Streamlit secrets
+    groq_api_key = os.getenv("GROQ_API_KEY")
+    
+    # Try Streamlit secrets if env var not found
+    if not groq_api_key and hasattr(st, 'secrets'):
+        try:
+            groq_api_key = st.secrets.get("GROQ_API_KEY")
+        except Exception:
+            pass
+    
+    # If still no API key, show input field
+    if not groq_api_key:
+        st.warning("🔑 Groq API key not found!")
+        groq_api_key = st.text_input("Enter your Groq API Key:", type="password")
+        if not groq_api_key:
+            st.info("💡 Get your free API key from [Groq Console](https://console.groq.com)")
+            st.stop()
+    
+    llm = ChatGroq(model="llama3-70b-8192", temperature=0.7, groq_api_key=groq_api_key)
 
     prompt = PromptTemplate.from_template(
         """Use the context to answer the question. If empty, answer from your own knowledge.
@@ -72,7 +101,6 @@ Answer:"""
     )
 
 # Page config & sidebar toggle
-
 st.set_page_config(page_title="My-Personal-ChatBot+", page_icon="🤖", layout="wide")
 
 with st.sidebar:
@@ -84,20 +112,16 @@ with st.sidebar:
             st.session_state.chain = build_chain(uploaded.getvalue())
         st.success("Ready!")
 
-
 # Program main layout
-
 st.title("🤖 ChatBot+")
-st.caption("Chat with my résumé or any PDF you attach")
+st.caption("Chat with me or any PDF you attach")
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
 if "chain" not in st.session_state:
     st.session_state.chain = build_chain()  # résumé only on first load
 
-
 # Display chat + input bottom
-
 for msg in st.session_state.messages:
     st.chat_message(msg["role"]).write(msg["content"])
 
