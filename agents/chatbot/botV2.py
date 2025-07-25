@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Absolute paths
-RESUME_PDF = "/Users/subin/documents/job-applications/resume_SubinKhatiwada.pdf"
+RESUME_PDF = "./documents/resume_SubinKhatiwada.pdf"
 CHROMA_DIR = pathlib.Path(__file__).parent / "chroma_db"
 
 # Build / rebuild merged retrieve

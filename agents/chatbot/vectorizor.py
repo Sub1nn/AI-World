@@ -7,7 +7,7 @@ from langchain_chroma import Chroma
 
 ROOT       = pathlib.Path(__file__).parent.resolve()
 # PDF_PATH   = ROOT / "resume_SubinKhatiwada.pdf"
-PDF_PATH = "/Users/subin/documents/job-applications/resume_SubinKhatiwada.pdf"
+PDF_PATH = "./documents/resume_SubinKhatiwada.pdf"
 CHROMA_DIR = ROOT / "chroma_db"
 
 loader = PyPDFLoader(str(PDF_PATH))
