@@ -1,5 +1,5 @@
 # bot.py
-import os, pathlib, tempfile, streamlit as st
+import os, pathlib, tempfile, shutil, streamlit as st
 from langchain_chroma import Chroma
 from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -14,7 +14,9 @@ load_dotenv()
 
 # Absolute paths
 RESUME_PDF = "./documents/resume_SubinKhatiwada.pdf"
-CHROMA_DIR = pathlib.Path(__file__).parent / "chroma_db"
+CHROMA_DIR = pathlib.Path(__file__).parent / "chroma"
+if os.path.exists(CHROMA_DIR):
+    shutil.rmtree(CHROMA_DIR)
 
 # Build / rebuild merged retrieve
 @st.cache_resource(show_spinner=False)
