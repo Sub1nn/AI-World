@@ -22,7 +22,7 @@ COPY . .
 RUN mkdir -p chroma_db
 
 # Expose port
-EXPOSE 8501
+EXPOSE 8080
 
 # Run the app
-CMD ["streamlit", "run", "botV2.py", "--server.port=8501", "--server.address=0.0.0.0"]
+CMD ["streamlit", "run", "botV2.py", "--server.port=8080", "--server.address=0.0.0.0"]
