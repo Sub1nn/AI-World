@@ -14,7 +14,7 @@ async function runDiagnostics() {
     "GROQ_API_KEY",
     "GOOGLE_API_KEY",
     "OPEN_WEATHER_KEY",
-    "YELP_API_KEY",
+    "GOOGLE_PLACES_API_KEY",
     "NEWS_API_KEY",
   ];
 
