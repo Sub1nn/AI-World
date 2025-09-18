@@ -1,4 +1,4 @@
-// test-setup.js - Quick setup verification
+// Quick setup verification
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -9,7 +9,7 @@ const requiredEnvVars = [
   "GROQ_API_KEY",
   "GOOGLE_API_KEY",
   "OPEN_WEATHER_KEY",
-  "YELP_API_KEY",
+  "GOOGLE_PLACES_API_KEY",
   "NEWS_API_KEY",
 ];
 
