@@ -1,4 +1,3 @@
-// services/toolService.js - Updated with Google Places API integration
 import axios from "axios";
 
 const tools = [
@@ -11,9 +10,18 @@ const tools = [
       parameters: {
         type: "object",
         properties: {
-          latitude: { type: "number", minimum: -90, maximum: 90 },
-          longitude: { type: "number", minimum: -180, maximum: 180 },
-          location_name: { type: "string", minLength: 1, maxLength: 100 },
+          latitude: {
+            type: ["number", "string"], // FIXED: Accept both number and string
+            description: "Latitude coordinate (-90 to 90)",
+          },
+          longitude: {
+            type: ["number", "string"], // FIXED: Accept both number and string
+            description: "Longitude coordinate (-180 to 180)",
+          },
+          location_name: {
+            type: "string",
+            description: "Name of the location for weather analysis",
+          },
         },
         required: ["latitude", "longitude", "location_name"],
       },
@@ -24,22 +32,29 @@ const tools = [
     function: {
       name: "intelligent_restaurant_discovery",
       description:
-        "Discover restaurants with detailed analysis, local specialties, and cultural context using Google Places API",
+        "Discover restaurants with detailed analysis using Google Places API",
       parameters: {
         type: "object",
         properties: {
-          lat: { type: "number", minimum: -90, maximum: 90 },
-          lon: { type: "number", minimum: -180, maximum: 180 },
-          location_name: { type: "string", minLength: 1, maxLength: 100 },
+          lat: {
+            type: ["number", "string"], // FIXED: Accept both number and string
+            description: "Latitude coordinate",
+          },
+          lon: {
+            type: ["number", "string"], // FIXED: Accept both number and string
+            description: "Longitude coordinate",
+          },
+          location_name: {
+            type: "string",
+            description: "Name of the location",
+          },
           cuisine_preference: {
             type: "string",
-            description:
-              "specific cuisine or 'local traditional' for regional specialties",
-            maxLength: 50,
+            description: "Cuisine preference or 'local traditional'",
           },
           budget_level: {
             type: "string",
-            enum: ["budget", "mid-range", "luxury", "any"],
+            description: "Budget level preference",
           },
         },
         required: ["lat", "lon", "location_name"],
@@ -50,22 +65,29 @@ const tools = [
     type: "function",
     function: {
       name: "smart_accommodation_finder",
-      description: "Find hotels with detailed insights using Google Places API",
+      description: "Find hotels and accommodations using Google Places API",
       parameters: {
         type: "object",
         properties: {
-          lat: { type: "number", minimum: -90, maximum: 90 },
-          lon: { type: "number", minimum: -180, maximum: 180 },
-          location_name: { type: "string", minLength: 1, maxLength: 100 },
+          lat: {
+            type: ["number", "string"], // FIXED: Accept both number and string
+            description: "Latitude coordinate",
+          },
+          lon: {
+            type: ["number", "string"], // FIXED: Accept both number and string
+            description: "Longitude coordinate",
+          },
+          location_name: {
+            type: "string",
+            description: "Name of the location",
+          },
           budget_category: {
             type: "string",
-            enum: ["$", "$$", "$$$", "$$$$"],
-            default: "$$",
+            description: "Budget category",
           },
           stay_type: {
             type: "string",
-            description: "hotel, hostel, boutique, luxury, etc.",
-            maxLength: 30,
+            description: "Type of accommodation",
           },
         },
         required: ["lat", "lon", "location_name"],
@@ -76,17 +98,21 @@ const tools = [
     type: "function",
     function: {
       name: "comprehensive_safety_intelligence",
-      description:
-        "Analyze safety, security, travel advisories, and current situational awareness",
+      description: "Analyze safety and security for travel destinations",
       parameters: {
         type: "object",
         properties: {
-          location: { type: "string", minLength: 1, maxLength: 100 },
-          country: { type: "string", minLength: 1, maxLength: 100 },
+          location: {
+            type: "string",
+            description: "City or region name",
+          },
+          country: {
+            type: "string",
+            description: "Country name",
+          },
           specific_concerns: {
             type: "string",
-            description: "war, crime, natural disasters, health, etc.",
-            maxLength: 100,
+            description: "Specific safety concerns to focus on",
           },
         },
         required: ["location", "country"],
@@ -97,18 +123,21 @@ const tools = [
     type: "function",
     function: {
       name: "cultural_and_travel_insights",
-      description:
-        "Get cultural context, local customs, travel policies, and destination intelligence",
+      description: "Get cultural context and travel information",
       parameters: {
         type: "object",
         properties: {
-          location: { type: "string", minLength: 1, maxLength: 100 },
-          country: { type: "string", minLength: 1, maxLength: 100 },
+          location: {
+            type: "string",
+            description: "City or region name",
+          },
+          country: {
+            type: "string",
+            description: "Country name",
+          },
           insight_type: {
             type: "string",
-            description:
-              "culture, visa, customs, language, currency, tourism, etc.",
-            maxLength: 50,
+            description: "Type of cultural insights needed",
           },
         },
         required: ["location", "country"],
@@ -120,18 +149,25 @@ const tools = [
     function: {
       name: "local_experiences_and_attractions",
       description:
-        "Discover attractions, activities, hidden gems, and local experiences using Google Places API",
+        "Discover attractions and experiences using Google Places API",
       parameters: {
         type: "object",
         properties: {
-          lat: { type: "number", minimum: -90, maximum: 90 },
-          lon: { type: "number", minimum: -180, maximum: 180 },
-          location_name: { type: "string", minLength: 1, maxLength: 100 },
+          lat: {
+            type: ["number", "string"], // FIXED: Accept both number and string
+            description: "Latitude coordinate",
+          },
+          lon: {
+            type: ["number", "string"], // FIXED: Accept both number and string
+            description: "Longitude coordinate",
+          },
+          location_name: {
+            type: "string",
+            description: "Name of the location",
+          },
           interest_type: {
             type: "string",
-            description:
-              "attractions, activities, nature, culture, nightlife, etc.",
-            maxLength: 50,
+            description: "Type of interests or attractions",
           },
         },
         required: ["lat", "lon", "location_name"],
@@ -221,7 +257,7 @@ class APIRequestManager {
   }
 }
 
-// Helper functions for safety intelligence (unchanged)
+// Helper functions for safety intelligence
 const assessSourceReliability = (sourceName) => {
   const reliableSources = [
     "Reuters",
@@ -362,7 +398,7 @@ const getOfficialAdvisorySource = () => {
   return "your government's official travel advisory service (e.g., US State Department, UK FCO, etc.)";
 };
 
-// Weather helper functions (unchanged)
+// Weather helper functions
 function getWeatherAdvice(temp, condition) {
   if (temp > 25 && condition === "Clear")
     return "Excellent weather for travel and outdoor activities";
@@ -483,25 +519,32 @@ function mapGooglePlacesToHotel(place, location_name) {
   };
 }
 
-// Tool handlers with Google Places API integration
+// Tool handlers with coordinate conversion
 const toolHandlers = {
-  // Weather tool (unchanged)
+  // Weather tool with string coordinate handling
   async comprehensive_weather_analysis({ latitude, longitude, location_name }) {
     try {
-      if (!latitude || !longitude || !location_name) {
+      // FIXED: Convert string coordinates to numbers if needed
+      const lat =
+        typeof latitude === "string" ? parseFloat(latitude) : latitude;
+      const lon =
+        typeof longitude === "string" ? parseFloat(longitude) : longitude;
+
+      // Validate after conversion
+      if (!lat || !lon || !location_name) {
         throw new Error(
           "Missing required parameters: latitude, longitude, and location_name are required"
         );
       }
 
-      if (latitude < -90 || latitude > 90) {
+      if (isNaN(lat) || lat < -90 || lat > 90) {
         throw new Error(
-          `Invalid latitude: ${latitude}. Must be between -90 and 90`
+          `Invalid latitude: ${latitude}. Must be a number between -90 and 90`
         );
       }
-      if (longitude < -180 || longitude > 180) {
+      if (isNaN(lon) || lon < -180 || lon > 180) {
         throw new Error(
-          `Invalid longitude: ${longitude}. Must be between -180 and 180`
+          `Invalid longitude: ${longitude}. Must be a number between -180 and 180`
         );
       }
 
@@ -510,14 +553,14 @@ const toolHandlers = {
       }
 
       const weatherRequest = async () => {
-        const currentUrl = `https://api.openweathermap.org/data/2.5/weather?lat=${latitude}&lon=${longitude}&appid=${process.env.OPEN_WEATHER_KEY}&units=metric`;
+        const currentUrl = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${process.env.OPEN_WEATHER_KEY}&units=metric`;
         const currentRes = await APIRequestManager.makeRequest(
           currentUrl,
           {},
           "weather"
         );
 
-        const forecastUrl = `https://api.openweathermap.org/data/2.5/forecast?lat=${latitude}&lon=${longitude}&appid=${process.env.OPEN_WEATHER_KEY}&units=metric`;
+        const forecastUrl = `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&appid=${process.env.OPEN_WEATHER_KEY}&units=metric`;
         const forecastRes = await APIRequestManager.makeRequest(
           forecastUrl,
           {},
@@ -587,7 +630,7 @@ const toolHandlers = {
     }
   },
 
-  // NEW: Google Places restaurant search
+  // Restaurant search with string coordinate handling
   async intelligent_restaurant_discovery({
     lat,
     lon,
@@ -596,24 +639,18 @@ const toolHandlers = {
     budget_level = "any",
   }) {
     try {
+      // FIXED: Convert string coordinates to numbers if needed
+      const latitude = typeof lat === "string" ? parseFloat(lat) : lat;
+      const longitude = typeof lon === "string" ? parseFloat(lon) : lon;
+
       if (!process.env.GOOGLE_PLACES_API_KEY) {
         throw new Error("Google Places API not configured");
       }
 
-      const radius = 5000; // 5km search radius
-      let searchTypes = ["restaurant", "food"];
-
-      // Add specific cuisine types if specified
-      if (
-        cuisine_preference !== "local traditional" &&
-        cuisine_preference !== "any"
-      ) {
-        searchTypes.push("meal_takeaway");
-      }
+      const radius = 5000;
 
       const restaurantRequest = async () => {
-        // Use Google Places Nearby Search
-        const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${lat},${lon}&radius=${radius}&type=restaurant&key=${process.env.GOOGLE_PLACES_API_KEY}`;
+        const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${latitude},${longitude}&radius=${radius}&type=restaurant&key=${process.env.GOOGLE_PLACES_API_KEY}`;
 
         return await APIRequestManager.makeRequest(url, {}, "google_places");
       };
@@ -678,7 +715,7 @@ const toolHandlers = {
     }
   },
 
-  // NEW: Google Places accommodation search
+  // Accommodation search with string coordinate handling
   async smart_accommodation_finder({
     lat,
     lon,
@@ -687,15 +724,18 @@ const toolHandlers = {
     stay_type = "hotel",
   }) {
     try {
+      // FIXED: Convert string coordinates to numbers if needed
+      const latitude = typeof lat === "string" ? parseFloat(lat) : lat;
+      const longitude = typeof lon === "string" ? parseFloat(lon) : lon;
+
       if (!process.env.GOOGLE_PLACES_API_KEY) {
         throw new Error("Google Places API not configured");
       }
 
-      const radius = 10000; // 10km search radius for accommodations
+      const radius = 10000;
 
       const accommodationRequest = async () => {
-        // Use Google Places Nearby Search for lodging
-        const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${lat},${lon}&radius=${radius}&type=lodging&key=${process.env.GOOGLE_PLACES_API_KEY}`;
+        const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${latitude},${longitude}&radius=${radius}&type=lodging&key=${process.env.GOOGLE_PLACES_API_KEY}`;
 
         return await APIRequestManager.makeRequest(url, {}, "google_places");
       };
@@ -753,7 +793,7 @@ const toolHandlers = {
     }
   },
 
-  // Updated attractions search with Google Places
+  // Attractions search with string coordinate handling
   async local_experiences_and_attractions({
     lat,
     lon,
@@ -761,13 +801,16 @@ const toolHandlers = {
     interest_type = "attractions",
   }) {
     try {
+      // FIXED: Convert string coordinates to numbers if needed
+      const latitude = typeof lat === "string" ? parseFloat(lat) : lat;
+      const longitude = typeof lon === "string" ? parseFloat(lon) : lon;
+
       if (!process.env.GOOGLE_PLACES_API_KEY) {
         throw new Error("Google Places API not configured");
       }
 
-      const radius = 15000; // 15km search radius for attractions
+      const radius = 15000;
 
-      // Map interest types to Google Places types
       const typeMapping = {
         attractions: ["tourist_attraction", "museum", "amusement_park"],
         activities: ["tourist_attraction", "gym", "bowling_alley"],
@@ -781,8 +824,7 @@ const toolHandlers = {
       const searchTypes = typeMapping[interest_type] || typeMapping.attractions;
 
       const attractionRequest = async () => {
-        // Search for the primary type
-        const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${lat},${lon}&radius=${radius}&type=${searchTypes[0]}&key=${process.env.GOOGLE_PLACES_API_KEY}`;
+        const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${latitude},${longitude}&radius=${radius}&type=${searchTypes[0]}&key=${process.env.GOOGLE_PLACES_API_KEY}`;
 
         return await APIRequestManager.makeRequest(url, {}, "google_places");
       };
@@ -855,7 +897,7 @@ const toolHandlers = {
     }
   },
 
-  // Safety and cultural tools remain unchanged but keeping for completeness...
+  // Safety intelligence tool (no coordinates needed)
   async comprehensive_safety_intelligence({
     location,
     country,
@@ -1109,6 +1151,7 @@ const toolHandlers = {
     }
   },
 
+  // Cultural insights tool (no coordinates needed)
   async cultural_and_travel_insights({
     location,
     country,
@@ -1348,58 +1391,35 @@ export const toolService = {
       }
     }
 
+    // FIXED: Convert string coordinates to numbers during validation
     for (const [param, value] of Object.entries(args)) {
       const propDef = properties[param];
-      if (propDef && propDef.type) {
-        const actualType = typeof value;
-        const expectedType = propDef.type;
+      if (propDef) {
+        // Handle coordinate conversion
+        if (
+          Array.isArray(propDef.type) &&
+          propDef.type.includes("number") &&
+          typeof value === "string"
+        ) {
+          const numValue = parseFloat(value);
+          if (!isNaN(numValue)) {
+            args[param] = numValue; // Convert string to number
+            continue;
+          }
+        }
 
-        if (expectedType === "number" && actualType !== "number") {
+        // Type checking after conversion
+        const actualType = typeof args[param];
+        const expectedTypes = Array.isArray(propDef.type)
+          ? propDef.type
+          : [propDef.type];
+
+        if (!expectedTypes.includes(actualType)) {
           throw new Error(
-            `Parameter ${param} must be a number, got ${actualType}`
+            `Parameter ${param} must be one of: ${expectedTypes.join(
+              ", "
+            )}, got ${actualType}`
           );
-        }
-        if (expectedType === "string" && actualType !== "string") {
-          throw new Error(
-            `Parameter ${param} must be a string, got ${actualType}`
-          );
-        }
-
-        if (expectedType === "number") {
-          if (propDef.minimum !== undefined && value < propDef.minimum) {
-            throw new Error(
-              `Parameter ${param} must be >= ${propDef.minimum}, got ${value}`
-            );
-          }
-          if (propDef.maximum !== undefined && value > propDef.maximum) {
-            throw new Error(
-              `Parameter ${param} must be <= ${propDef.maximum}, got ${value}`
-            );
-          }
-        }
-
-        if (expectedType === "string") {
-          if (
-            propDef.minLength !== undefined &&
-            value.length < propDef.minLength
-          ) {
-            throw new Error(
-              `Parameter ${param} must be at least ${propDef.minLength} characters`
-            );
-          }
-          if (
-            propDef.maxLength !== undefined &&
-            value.length > propDef.maxLength
-          ) {
-            throw new Error(
-              `Parameter ${param} must be at most ${propDef.maxLength} characters`
-            );
-          }
-          if (propDef.enum && !propDef.enum.includes(value)) {
-            throw new Error(
-              `Parameter ${param} must be one of: ${propDef.enum.join(", ")}`
-            );
-          }
         }
       }
     }
