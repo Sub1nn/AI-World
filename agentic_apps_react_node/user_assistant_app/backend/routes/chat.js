@@ -11,6 +11,7 @@ router.post("/chat", chatRateLimiter, chatController.handleChat);
 // Context management endpoints
 router.post("/reset-context", chatController.resetContext);
 router.get("/context/:userId", chatController.getContext);
+router.get("/quality-analytics", chatController.getQualityAnalytics);
 
 // Network diagnostics endpoint
 router.get("/network-test", async (req, res) => {
