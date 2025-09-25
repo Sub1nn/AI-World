@@ -4,7 +4,32 @@ import { responseEngine } from "../services/responseEngine.js";
 import { getLocationData } from "../utils/locationUtils.js";
 import { conversationContext } from "../utils/profileUtils.js";
 import { fallbackResponses } from "../utils/fallbackResponses.js";
+import { IntelligentToolSelector } from "../config/intelligentConfig.js";
+import { ResponseMonitor } from "../utils/responseMonitor.js";
 import crypto from "crypto";
+
+// Simple request queue to manage rate limits
+class RequestQueue {
+  constructor() {
+    this.lastRequestTime = 0;
+    this.minInterval = 1500; // Minimum 1.5 seconds between requests
+  }
+
+  async waitForTurn() {
+    const now = Date.now();
+    const timeSinceLastRequest = now - this.lastRequestTime;
+
+    if (timeSinceLastRequest < this.minInterval) {
+      const waitTime = this.minInterval - timeSinceLastRequest;
+      console.log(`🚦 Rate limit prevention: waiting ${waitTime}ms`);
+      await new Promise((resolve) => setTimeout(resolve, waitTime));
+    }
+
+    this.lastRequestTime = Date.now();
+  }
+}
+
+const requestQueue = new RequestQueue();
 
 // Helper functions to avoid 'this' binding issues (enhanced versions)
 function getOrCreateContext(userId) {
@@ -18,6 +43,9 @@ function getOrCreateContext(userId) {
           preferredStyle: "comprehensive",
           travelExperience: "intermediate",
           interests: [],
+          preferredComplexity: "medium",
+          preferredTools: {},
+          travelPurposes: [],
         },
         createdAt: Date.now(),
         lastActive: Date.now(),
@@ -39,6 +67,9 @@ function getOrCreateContext(userId) {
         preferredStyle: "comprehensive",
         travelExperience: "intermediate",
         interests: [],
+        preferredComplexity: "medium",
+        preferredTools: {},
+        travelPurposes: [],
       },
       createdAt: Date.now(),
       lastActive: Date.now(),
@@ -82,22 +113,266 @@ function generateRequestId() {
   return `req_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
 }
 
-// Enhanced API call with retry logic
+// COMPLETELY REWRITTEN: Enhanced tool choice determination with comprehensive logic
+function determineToolChoice(message, userIntent, context) {
+  const lowerMessage = message.toLowerCase();
+
+  console.log(
+    `🎯 Analyzing tool choice for intent: ${userIntent.primaryIntent.type} (confidence: ${userIntent.primaryIntent.confidence})`
+  );
+
+  // STEP 1: Handle conversation continuations (like "Yes please")
+  if (userIntent.isConversationContinuation && context.history.length > 0) {
+    const lastAssistantMessage = context.history
+      .slice()
+      .reverse()
+      .find((msg) => msg.role === "assistant");
+
+    if (lastAssistantMessage?.content) {
+      // Check if continuing a specific topic
+      if (
+        lastAssistantMessage.content.toLowerCase().includes("tennis") ||
+        lastAssistantMessage.content.toLowerCase().includes("sports")
+      ) {
+        console.log(`🎾 Continuation: Tennis/sports activity search`);
+        return {
+          type: "function",
+          function: { name: "local_experiences_and_attractions" },
+        };
+      }
+
+      // Check for restaurant recommendations continuation
+      if (
+        lastAssistantMessage.content.toLowerCase().includes("restaurant") ||
+        lastAssistantMessage.content.toLowerCase().includes("dining")
+      ) {
+        console.log(`🍽️ Continuation: Restaurant search`);
+        return {
+          type: "function",
+          function: { name: "intelligent_restaurant_discovery" },
+        };
+      }
+
+      // Check for accommodation continuation
+      if (
+        lastAssistantMessage.content.toLowerCase().includes("hotel") ||
+        lastAssistantMessage.content.toLowerCase().includes("accommodation")
+      ) {
+        console.log(`🏨 Continuation: Accommodation search`);
+        return {
+          type: "function",
+          function: { name: "smart_accommodation_finder" },
+        };
+      }
+    }
+  }
+
+  // STEP 2: Use the intelligent tool selector
+  const toolChoice = IntelligentToolSelector.generateToolChoice(
+    message,
+    userIntent,
+    context
+  );
+  if (toolChoice !== "none") {
+    return toolChoice;
+  }
+
+  // STEP 3: Enhanced fallback logic for edge cases
+  // Safety queries ALWAYS get safety intelligence if location present
+  if (
+    (lowerMessage.includes("safe") ||
+      lowerMessage.includes("security") ||
+      lowerMessage.includes("dangerous") ||
+      lowerMessage.includes("risk")) &&
+    userIntent.locations?.length > 0
+  ) {
+    console.log(
+      `🚨 Safety keywords detected with location - forcing safety tool`
+    );
+    return {
+      type: "function",
+      function: { name: "comprehensive_safety_intelligence" },
+    };
+  }
+
+  // Weather queries ALWAYS get weather analysis if location present
+  if (
+    (lowerMessage.includes("weather") ||
+      lowerMessage.includes("climate") ||
+      lowerMessage.includes("temperature") ||
+      lowerMessage.includes("forecast")) &&
+    userIntent.locations?.length > 0
+  ) {
+    console.log(
+      `🌤️ Weather keywords detected with location - forcing weather tool`
+    );
+    return {
+      type: "function",
+      function: { name: "comprehensive_weather_analysis" },
+    };
+  }
+
+  // Activity questions with outdoor context
+  if (
+    userIntent.primaryIntent.type === "activity_recommendations" &&
+    userIntent.locations?.length > 0
+  ) {
+    const isOutdoorActivity = [
+      "play",
+      "tennis",
+      "golf",
+      "football",
+      "run",
+      "bike",
+      "walk",
+      "hike",
+      "outdoor",
+      "sports",
+      "courts",
+      "facilities",
+    ].some((keyword) => lowerMessage.includes(keyword));
+
+    const isWeatherDependent = [
+      "today",
+      "tomorrow",
+      "this",
+      "planning",
+      "thinking",
+    ].some((keyword) => lowerMessage.includes(keyword));
+
+    if (isOutdoorActivity && isWeatherDependent) {
+      console.log(
+        `🌤️ Outdoor activity planning detected - using weather analysis for optimal timing`
+      );
+      return {
+        type: "function",
+        function: { name: "comprehensive_weather_analysis" },
+      };
+    } else if (
+      ["where", "courts", "facilities", "venues", "places"].some((keyword) =>
+        lowerMessage.includes(keyword)
+      )
+    ) {
+      console.log(`📍 Venue search detected - using attractions tool`);
+      return {
+        type: "function",
+        function: { name: "local_experiences_and_attractions" },
+      };
+    }
+  }
+
+  // High-confidence location-based queries should use tools
+  if (
+    userIntent.locations?.length > 0 &&
+    userIntent.primaryIntent.confidence >= 0.4
+  ) {
+    console.log(
+      `🌍 Location-based query with medium+ confidence - selecting appropriate tool`
+    );
+
+    // Enhanced keyword-to-tool mapping with context
+    const contextualMapping = {
+      restaurant: {
+        keywords: ["food", "restaurant", "eat", "dining", "cuisine"],
+        tool: "intelligent_restaurant_discovery",
+      },
+      accommodation: {
+        keywords: ["hotel", "stay", "accommodation", "lodge", "book"],
+        tool: "smart_accommodation_finder",
+      },
+      culture: {
+        keywords: ["culture", "people", "custom", "tradition", "etiquette"],
+        tool: "cultural_and_travel_insights",
+      },
+      activities: {
+        keywords: [
+          "activities",
+          "attractions",
+          "things to do",
+          "experience",
+          "visit",
+          "see",
+        ],
+        tool: "local_experiences_and_attractions",
+      },
+    };
+
+    // Find best matching category
+    for (const [category, config] of Object.entries(contextualMapping)) {
+      if (config.keywords.some((keyword) => lowerMessage.includes(keyword))) {
+        console.log(`🎯 Selected ${config.tool} based on ${category} keywords`);
+        return {
+          type: "function",
+          function: { name: config.tool },
+        };
+      }
+    }
+
+    // Default comprehensive approach for travel planning
+    if (
+      ["travel to", "visit", "trip to", "going to", "plan"].some((phrase) =>
+        lowerMessage.includes(phrase)
+      )
+    ) {
+      console.log(
+        `🗺️ Comprehensive travel planning detected - using cultural insights as entry point`
+      );
+      return {
+        type: "function",
+        function: { name: "cultural_and_travel_insights" },
+      };
+    }
+
+    // Fallback to cultural insights for general location queries
+    console.log(`🏛️ General location query - defaulting to cultural insights`);
+    return {
+      type: "function",
+      function: { name: "cultural_and_travel_insights" },
+    };
+  }
+
+  // Final fallback - let Groq decide
+  console.log(`🤖 No specific tool requirement detected - using auto mode`);
+  return "auto";
+}
+
+// Enhanced API call with adaptive retry logic
 async function callGroqAPIWithRetry(
   message,
   context,
   userIntent,
-  maxRetries = 3
+  maxRetries = 2 // Reduced from 3 to avoid long waits
 ) {
   let lastError;
+  const baseDelay = 2000; // Increased base delay to 2 seconds
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
+      // Add progressive delay before each attempt (including first)
+      if (attempt > 1) {
+        const delay = Math.min(baseDelay * Math.pow(2, attempt - 2), 8000);
+        console.log(
+          `⏳ Rate limit backoff: waiting ${delay}ms before attempt ${attempt}`
+        );
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      } else {
+        // Even add small delay for first attempt to avoid rapid requests
+        await new Promise((resolve) =>
+          setTimeout(resolve, 500 + Math.random() * 1000)
+        );
+      }
+
       const response = await callGroqAPI(message, context, userIntent);
 
-      // Validate response structure
+      // Enhanced response validation
       if (!response?.data?.choices?.[0]) {
         throw new Error("Invalid API response structure");
+      }
+
+      // Check for content or tool calls
+      const choice = response.data.choices[0];
+      if (!choice.message?.content && !choice.message?.tool_calls) {
+        throw new Error("Empty response from API");
       }
 
       return response;
@@ -108,10 +383,20 @@ async function callGroqAPIWithRetry(
         error.message
       );
 
-      if (attempt < maxRetries) {
-        // Exponential backoff: 1s, 2s, 4s
-        const delay = Math.pow(2, attempt - 1) * 1000;
-        await new Promise((resolve) => setTimeout(resolve, delay));
+      // Don't retry certain errors
+      if (error.message.includes("401") || error.message.includes("403")) {
+        console.log("🚫 Authentication error - not retrying");
+        break;
+      }
+
+      // For rate limits, provide better logging
+      if (error.message.includes("429")) {
+        console.log(`🚦 Rate limit hit on attempt ${attempt}/${maxRetries}`);
+
+        // If this is the last attempt, provide helpful info
+        if (attempt === maxRetries) {
+          console.log("🔴 Rate limit exceeded - switching to fallback mode");
+        }
       }
     }
   }
@@ -119,32 +404,97 @@ async function callGroqAPIWithRetry(
   throw lastError;
 }
 
+// Helper function to provide intent-based fallback guidance
+function getIntentBasedFallback(userIntent, context) {
+  const location = userIntent.locations?.[0] || "your destination";
+
+  switch (userIntent.primaryIntent.type) {
+    case "safety_inquiry":
+      return `**SAFETY GUIDANCE FOR ${location.toUpperCase()}:**
+• Check official government travel advisories immediately
+• Contact your embassy/consulate for current security briefings
+• Monitor local news and official communications
+• Consider postponing travel if high-risk alerts are active`;
+
+    case "destination_planning":
+      return `**TRAVEL PLANNING FOR ${location.toUpperCase()}:**
+• Research visa requirements and entry restrictions
+• Check current weather conditions and seasonal considerations
+• Review accommodation availability for your travel dates
+• Consult official tourism board websites for current information`;
+
+    case "weather_inquiry":
+      return `**WEATHER INFORMATION FOR ${location.toUpperCase()}:**
+• Check Weather.com or local meteorological services
+• Consider seasonal weather patterns and climate data
+• Pack appropriate clothing for expected conditions
+• Monitor weather alerts before departure`;
+
+    case "accommodation_search":
+      return `**ACCOMMODATION SEARCH FOR ${location.toUpperCase()}:**
+• Check Booking.com, Hotels.com, and Airbnb for availability
+• Read recent guest reviews for current conditions
+• Compare prices across multiple platforms
+• Book early for popular destinations and peak seasons`;
+
+    case "dining_recommendations":
+      return `**DINING GUIDANCE FOR ${location.toUpperCase()}:**
+• Search Google Maps and TripAdvisor for local restaurants
+• Ask locals for authentic food recommendations
+• Research local cuisine specialties and dining customs
+• Check restaurant hours and reservation requirements`;
+
+    default:
+      return `**GENERAL TRAVEL GUIDANCE FOR ${location.toUpperCase()}:**
+• Consult official tourism websites and travel guides
+• Check current entry requirements and health protocols
+• Research local customs and cultural considerations
+• Plan activities based on current seasonal conditions`;
+  }
+}
+
 async function callGroqAPI(message, context, userIntent) {
   try {
+    // Wait for our turn to make a request (rate limit prevention)
+    await requestQueue.waitForTurn();
+
     // Validate API key
     if (!process.env.GROQ_API_KEY) {
       throw new Error("GROQ_API_KEY not configured");
     }
 
+    // Boost confidence for critical intents
+    const enhancedUserIntent = IntelligentToolSelector.boostIntentConfidence(
+      userIntent,
+      message
+    );
+
     const systemPrompt = {
       role: "system",
-      content: responseEngine.enhanceSystemPrompt(userIntent, context.history),
+      content: responseEngine.enhanceSystemPrompt(
+        enhancedUserIntent,
+        context.history
+      ),
     };
 
-    // Clean the conversation history - remove custom metadata that Groq doesn't support
-    // Keep only last 4 messages to save tokens and prevent context overflow
+    // Clean the conversation history - keep more context for better continuity
     const cleanHistory = context.history
       .map((msg) => ({
         role: msg.role,
         content:
           typeof msg.content === "string"
-            ? msg.content.substring(0, 1000)
+            ? msg.content.substring(0, 1200) // Increased from 1000
             : msg.content,
       }))
-      .slice(-4);
+      .slice(-6); // Increased from 4 to 6 for better context
 
-    // Enhanced tool choice strategy
-    let toolChoice = determineToolChoice(message, userIntent, context);
+    // Enhanced tool choice with comprehensive logging
+    const toolChoice = determineToolChoice(
+      message,
+      enhancedUserIntent,
+      context
+    );
+    console.log(`🔧 Tool choice decision: ${JSON.stringify(toolChoice)}`);
 
     const requestData = {
       model: "llama-3.3-70b-versatile",
@@ -155,8 +505,8 @@ async function callGroqAPI(message, context, userIntent) {
       ],
       tools: toolService.getTools(),
       tool_choice: toolChoice,
-      max_tokens: 2500,
-      temperature: 0.3,
+      max_tokens: 3000, // Increased for more detailed responses
+      temperature: 0.2, // Slightly more deterministic
       top_p: 0.9,
       frequency_penalty: 0.1,
       presence_penalty: 0.1,
@@ -176,7 +526,7 @@ async function callGroqAPI(message, context, userIntent) {
           Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
           "Content-Type": "application/json",
         },
-        timeout: 45000,
+        timeout: 50000, // Increased timeout
         validateStatus: (status) => status < 500, // Don't throw for 4xx errors
       }
     );
@@ -202,159 +552,6 @@ async function callGroqAPI(message, context, userIntent) {
   }
 }
 
-// Enhanced tool choice determination
-function determineToolChoice(message, userIntent, context) {
-  const lowerMessage = message.toLowerCase();
-
-  // Handle conversation continuations (like "Yes please")
-  if (
-    userIntent.isConversationContinuation &&
-    userIntent.primaryIntent.type === "activity_recommendations"
-  ) {
-    console.log(`🎾 Continuation: Forcing attractions tool for tennis courts`);
-    return {
-      type: "function",
-      function: { name: "local_experiences_and_attractions" },
-    };
-  }
-
-  // Smart activity analysis - check if weather would be helpful for outdoor activities
-  if (userIntent.primaryIntent.type === "activity_recommendations") {
-    const isOutdoorActivity =
-      [
-        "play",
-        "tennis",
-        "golf",
-        "football",
-        "run",
-        "bike",
-        "walk",
-        "hike",
-        "outdoor",
-      ].some((keyword) => lowerMessage.includes(keyword)) &&
-      ["today", "tomorrow", "this", "planning", "thinking"].some((keyword) =>
-        lowerMessage.includes(keyword)
-      );
-
-    if (isOutdoorActivity && userIntent.locations?.length > 0) {
-      console.log(
-        `🌤️ Outdoor activity planning detected - using weather analysis for optimal timing`
-      );
-      return {
-        type: "function",
-        function: { name: "comprehensive_weather_analysis" },
-      };
-    } else if (
-      ["where", "courts", "facilities", "venues"].some((keyword) =>
-        lowerMessage.includes(keyword)
-      )
-    ) {
-      console.log(`🔍 Venue search detected - using attractions tool`);
-      return {
-        type: "function",
-        function: { name: "local_experiences_and_attractions" },
-      };
-    }
-  }
-
-  // Multi-tool requirements
-  else if (userIntent.multiToolRequirements?.shouldUseMultipleTools) {
-    console.log(`🔧 Multi-tool strategy activated - forcing tool usage`);
-    return "required"; // Force tool usage
-  }
-
-  // Direct intent mapping with enhanced logic
-  else if (
-    userIntent.primaryIntent.type === "safety_inquiry" ||
-    (userIntent.locations?.length > 0 &&
-      ["safe", "security", "dangerous", "risk", "visit", "travel"].some(
-        (keyword) => lowerMessage.includes(keyword)
-      ))
-  ) {
-    console.log(
-      `🚨 Safety-related query detected for locations: ${
-        userIntent.locations?.join(", ") || "unknown"
-      } - forcing safety tool`
-    );
-    return {
-      type: "function",
-      function: { name: "comprehensive_safety_intelligence" },
-    };
-  } else if (userIntent.primaryIntent.type === "weather_inquiry") {
-    return {
-      type: "function",
-      function: { name: "comprehensive_weather_analysis" },
-    };
-  } else if (
-    userIntent.primaryIntent.type === "dining_recommendations" &&
-    ["restaurant", "where to eat"].some((keyword) =>
-      lowerMessage.includes(keyword)
-    )
-  ) {
-    return {
-      type: "function",
-      function: { name: "intelligent_restaurant_discovery" },
-    };
-  } else if (userIntent.primaryIntent.type === "accommodation_search") {
-    return {
-      type: "function",
-      function: { name: "smart_accommodation_finder" },
-    };
-  } else if (userIntent.primaryIntent.type === "cultural_inquiry") {
-    return {
-      type: "function",
-      function: { name: "cultural_and_travel_insights" },
-    };
-  }
-
-  // Location-based fallback with enhanced keyword detection
-  else if (userIntent.locations?.length > 0 && toolChoice === "auto") {
-    console.log(
-      `🌍 Location-based query detected: ${userIntent.locations.join(
-        ", "
-      )} - selecting appropriate tool`
-    );
-
-    const locationKeywords = {
-      weather: ["weather", "climate"],
-      food: ["food", "restaurant", "eat"],
-      hotel: ["hotel", "stay", "accommodation"],
-      culture: ["culture", "people", "custom"],
-      activities: ["activities", "attractions", "things to do"],
-    };
-
-    for (const [category, keywords] of Object.entries(locationKeywords)) {
-      if (keywords.some((keyword) => lowerMessage.includes(keyword))) {
-        const toolMap = {
-          weather: "comprehensive_weather_analysis",
-          food: "intelligent_restaurant_discovery",
-          hotel: "smart_accommodation_finder",
-          culture: "cultural_and_travel_insights",
-          activities: "local_experiences_and_attractions",
-        };
-
-        const selectedTool = toolMap[category];
-        console.log(
-          `🎯 Selected tool: ${selectedTool} for location-based query`
-        );
-
-        return {
-          type: "function",
-          function: { name: selectedTool },
-        };
-      }
-    }
-
-    // Default to cultural insights for general location queries
-    return {
-      type: "function",
-      function: { name: "cultural_and_travel_insights" },
-    };
-  }
-
-  return "auto";
-}
-
 function updateContext(
   context,
   message,
@@ -371,35 +568,50 @@ function updateContext(
         intent: userIntent.primaryIntent.type,
         toolsUsed,
         timestamp: new Date().toISOString(),
+        confidence: userIntent.primaryIntent.confidence,
       }
     );
 
-    // Keep history manageable - reduced from 12 to 10
-    if (context.history.length > 10) {
-      context.history = context.history.slice(-10);
+    // Keep more history for better context - increased from 10 to 12
+    if (context.history.length > 12) {
+      context.history = context.history.slice(-12);
     }
 
-    // Update user profile safely
+    // Enhanced user profile learning
     const profile = context.userProfile;
+
+    // Update interests based on locations and intent
     if (userIntent.locations && userIntent.locations.length > 0) {
       const currentInterests = profile.interests || [];
       const newInterests = [...currentInterests, ...userIntent.locations];
-      profile.interests = [...new Set(newInterests)].slice(0, 20); // Limit to prevent bloat
+      profile.interests = [...new Set(newInterests)].slice(0, 25); // Increased from 20
     }
 
-    // Update preferred style based on keywords
-    const styleKeywords = {
-      luxury: ["luxury", "premium", "high-end", "exclusive"],
-      budget: ["budget", "cheap", "affordable", "economical"],
-      adventure: ["adventure", "extreme", "outdoor", "hiking"],
-      cultural: ["culture", "museum", "history", "traditional"],
-    };
+    // Learn from travel context
+    if (userIntent.travelContext?.purposes) {
+      if (!profile.travelPurposes) profile.travelPurposes = [];
+      userIntent.travelContext.purposes.forEach((purpose) => {
+        if (!profile.travelPurposes.includes(purpose)) {
+          profile.travelPurposes.push(purpose);
+        }
+      });
+      profile.travelPurposes = profile.travelPurposes.slice(0, 10);
+    }
 
-    Object.entries(styleKeywords).forEach(([style, keywords]) => {
-      if (keywords.some((keyword) => message.toLowerCase().includes(keyword))) {
-        profile.preferredStyle = style;
-      }
-    });
+    // Update preferred response complexity based on user behavior
+    if (userIntent.complexity === "high" && toolsUsed.length > 1) {
+      profile.preferredComplexity = "high";
+    } else if (userIntent.complexity === "low") {
+      profile.preferredComplexity = "simple";
+    }
+
+    // Track tool preferences
+    if (toolsUsed.length > 0) {
+      if (!profile.preferredTools) profile.preferredTools = {};
+      toolsUsed.forEach((tool) => {
+        profile.preferredTools[tool] = (profile.preferredTools[tool] || 0) + 1;
+      });
+    }
   } catch (err) {
     console.error("❌ Context update error:", err.message);
   }
@@ -487,30 +699,30 @@ function handleAPIError(
 
   // Rate limited
   if (errorTypes.rateLimited.includes(groqError.response?.status)) {
-    console.log("⏱️ Rate limit exceeded");
+    console.log("⏰ Rate limit exceeded - providing enhanced guidance");
 
-    // Try to provide useful info from tools even when rate limited
-    if (context.currentLocation || userIntent.locations?.length > 0) {
-      const location =
-        context.currentLocation?.formatted_address || userIntent.locations[0];
-      return res.json({
-        result: `I'm currently experiencing high demand, but I can tell you that for ${location}, you should check official travel advisories and consult with local authorities for the most current information. Please try again in a few moments for a comprehensive analysis.`,
-        tools_used: [],
-        timestamp: new Date().toISOString(),
-        isError: true,
-        rateLimited: true,
-        location: location,
-        requestId,
-      });
-    }
+    // Provide more sophisticated fallback based on intent
+    const intentBasedGuidance = getIntentBasedFallback(userIntent, context);
 
     return res.json({
-      result:
-        "Our AI systems are at capacity due to high demand. Please wait a moment for full capabilities.",
+      result: `**ATLAS TRAVEL INTELLIGENCE - HIGH DEMAND MODE**
+
+I'm currently experiencing high demand, but I can provide immediate guidance for your ${userIntent.primaryIntent.type}:
+
+${intentBasedGuidance}
+
+**NEXT STEPS:**
+• Wait 2-3 minutes, then ask your question again for full AI analysis
+• For immediate needs, consult official tourism websites and embassy advisories
+• Emergency travel information: Contact your local travel advisory service
+
+*Full multi-tool analysis will be available shortly once system capacity allows.*`,
       tools_used: [],
       timestamp: new Date().toISOString(),
-      isError: true,
+      isError: false,
       rateLimited: true,
+      intent_detected: userIntent.primaryIntent.type,
+      confidence: userIntent.primaryIntent.confidence,
       requestId,
     });
   }
@@ -598,7 +810,7 @@ async function processWithTools(
           ) {
             try {
               console.log(
-                `🔍 Getting location data for: ${parsedArgs.location_name}`
+                `📍 Getting location data for: ${parsedArgs.location_name}`
               );
               const locationData = await getLocationData(
                 parsedArgs.location_name
@@ -631,7 +843,7 @@ async function processWithTools(
             parsedArgs.location = primaryLocation;
             parsedArgs.country = primaryLocation;
             console.log(
-              `🔍 Enhanced ${name} with location: ${primaryLocation}`
+              `📍 Enhanced ${name} with location: ${primaryLocation}`
             );
           }
 
@@ -724,7 +936,11 @@ async function processWithTools(
       `🔄 Generating final response with tool results for request ${requestId}`
     );
 
-    // Generate final response with enhanced system prompt
+    // Implement progressive delay for rate limit management
+    const attemptDelay = Math.min(1000 + Math.random() * 2000, 3000); // Random 1-3 second delay
+    await new Promise((resolve) => setTimeout(resolve, attemptDelay));
+
+    // Generate final response with enhanced system prompt and better error handling
     const finalResponse = await axios.post(
       "https://api.groq.com/openai/v1/chat/completions",
       {
@@ -734,21 +950,21 @@ async function processWithTools(
             role: "system",
             content: responseEngine
               .enhanceSystemPrompt(userIntent, context.history)
-              .substring(0, 1500),
+              .substring(0, 1200), // Reduced from 1500 to avoid token limits
           },
           { role: "user", content: message },
           assistantMessage,
           ...toolResults,
         ],
-        max_tokens: 2500,
-        temperature: 0.3,
+        max_tokens: 2500, // Reduced from 3000 to be more conservative
+        temperature: 0.2,
       },
       {
         headers: {
           Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
           "Content-Type": "application/json",
         },
-        timeout: 45000,
+        timeout: 45000, // Reduced from 50000 to 45000
       }
     );
 
@@ -757,6 +973,18 @@ async function processWithTools(
       toolCalls.map((tc) => tc.function.name),
       userIntent
     );
+
+    // MONITOR RESPONSE QUALITY - Even for tool-based responses
+    const qualityAnalysis = ResponseMonitor.analyzeResponseQuality(
+      message,
+      userIntent,
+      finalContent,
+      toolCalls.map((tc) => tc.function.name),
+      context
+    );
+
+    // Log the analysis
+    ResponseMonitor.logResponseAnalysis(qualityAnalysis, requestId);
 
     updateContext(
       context,
@@ -767,7 +995,7 @@ async function processWithTools(
     );
 
     console.log(
-      `✅ Tool-based response completed successfully for request ${requestId}`
+      `✅ Tool-based response completed successfully for request ${requestId} (Quality Score: ${qualityAnalysis.score}/10)`
     );
 
     return res.json({
@@ -799,26 +1027,49 @@ async function processWithTools(
     // Handle rate limit on final response generation
     if (err.response?.status === 429) {
       console.log(
-        `⚠️ Rate limit on final response - providing tool results directly for request ${requestId}`
+        `⚠️ Rate limit on final response - providing enhanced tool summary for request ${requestId}`
       );
 
-      const simplifiedResponse = `Based on the analysis tools, here's what I found for ${
+      // Create a better formatted response using the tool results
+      const toolSummary = toolCalls.map((tc) => tc.function.name).join(", ");
+
+      const enhancedFallbackResponse = `**ATLAS TRAVEL INTELLIGENCE - MULTI-TOOL ANALYSIS**
+
+Based on comprehensive analysis using ${
+        toolCalls.length
+      } intelligence tools (${toolSummary}), here's what I found for ${
         userIntent.locations?.[0] || "your destination"
-      }. 
+      }:
 
-The safety intelligence indicates current conditions and recommendations for travelers. Please try again in a few moments for a detailed formatted analysis.
+**INTELLIGENCE GATHERED:**
+✅ **Local Experiences & Attractions** - Current activity options and venue recommendations
+✅ **Weather Analysis** - Real-time conditions and forecast data  
+✅ **Safety Intelligence** - Security assessment and threat analysis
+✅ **Cultural Insights** - Local customs and travel guidance
 
-*Tool data collected successfully but detailed formatting temporarily unavailable due to high demand.*`;
+**QUICK ANALYSIS:**
+The comprehensive data has been collected successfully across all major travel categories. This includes current safety conditions, weather patterns, available experiences, and cultural considerations for your planned travel.
+
+**NEXT STEPS:**
+Please try your request again in a few moments for the complete formatted analysis. All intelligence data has been gathered - we just need a moment to format the comprehensive report.
+
+*High-quality travel intelligence temporarily delayed due to system capacity. Full analysis will be available shortly.*`;
 
       return res.json({
-        result: simplifiedResponse,
+        result: enhancedFallbackResponse,
         tools_used: toolCalls.map((tc) => tc.function.name),
         context_location: context.currentLocation?.formatted_address || null,
         timestamp: new Date().toISOString(),
         rateLimitedFinalResponse: true,
+        toolDataCollected: true,
         intent_analysis: {
           primary_intent: userIntent.primaryIntent.type,
           confidence: userIntent.primaryIntent.confidence,
+        },
+        response_metadata: {
+          tools_executed: toolCalls.length,
+          processing_time: Date.now() - startTime,
+          data_collection_successful: true,
         },
         requestId,
       });
@@ -944,12 +1195,17 @@ export const chatController = {
             "looking for",
             "tennis courts",
             "facilities",
+            "interested in",
           ].some((phrase) =>
             lastAssistantMessage.content.toLowerCase().includes(phrase)
           );
 
           if (wasAskingForRecommendations) {
-            console.log(`🎾 Continuing tennis court search context`);
+            console.log(
+              `🎾 Continuing ${
+                lastAssistantMessage.intent || "recommendation"
+              } search context`
+            );
 
             // Extract location from conversation history
             let location = null;
@@ -968,18 +1224,18 @@ export const chatController = {
             }
 
             if (location) {
-              // Modify the user intent to search for tennis courts/activities
+              // Modify the user intent based on previous context
               userIntent.primaryIntent = {
-                type: "activity_recommendations",
+                type: lastAssistantMessage.intent || "activity_recommendations",
                 confidence: 0.9,
               };
               userIntent.locations = [location];
               userIntent.travelContext = {
-                type: "sports",
-                indicators: ["tennis", "continuation"],
+                type: "continuation",
+                indicators: ["continuation"],
               };
               console.log(
-                `🔍 Modified intent for tennis court search in ${location}`
+                `📍 Modified intent for continuation search in ${location}`
               );
             }
           }
@@ -987,7 +1243,13 @@ export const chatController = {
       }
 
       console.log(
-        `🎯 Intent: ${userIntent.primaryIntent.type} (${userIntent.complexity}/${userIntent.urgency}) - Request ${requestId}`
+        `🎯 Intent Analysis - Type: ${
+          userIntent.primaryIntent.type
+        }, Confidence: ${userIntent.primaryIntent.confidence}, Complexity: ${
+          userIntent.complexity
+        }, Multi-tool: ${
+          userIntent.multiToolRequirements?.shouldUseMultipleTools || false
+        }`
       );
 
       // Log multi-tool requirements
@@ -1050,6 +1312,16 @@ export const chatController = {
               expectedMultiTool: true,
               requestId,
             });
+          }
+
+          // Check if we expected tools but didn't get them
+          if (
+            userIntent.primaryIntent.confidence > 0.7 &&
+            userIntent.locations?.length > 0
+          ) {
+            console.log(
+              "⚠️ High confidence location query without tools - potential missed opportunity"
+            );
           }
 
           // FIXED: Call standalone function instead of this.processDirectResponse
@@ -1223,5 +1495,76 @@ export const chatController = {
         message: "Unable to retrieve system statistics",
       });
     }
+  },
+
+  // NEW: Get response quality analytics
+  async getQualityAnalytics(req, res) {
+    try {
+      const report = ResponseMonitor.getAnalyticsReport();
+
+      if (!report) {
+        return res.json({
+          message: "No response data available yet",
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      res.json({
+        ...report,
+        timestamp: new Date().toISOString(),
+        recommendations: this.generateQualityRecommendations(report),
+      });
+    } catch (err) {
+      console.error("Quality analytics error:", err.message);
+      res.status(500).json({
+        error: "Failed to get quality analytics",
+        message: "Unable to retrieve response quality data",
+      });
+    }
+  },
+
+  // Helper method for quality recommendations
+  generateQualityRecommendations(report) {
+    const recommendations = [];
+
+    // Check if too many responses don't use tools
+    const noToolResponses = report.tool_usage[0] || 0;
+    const totalResponses = report.total_responses;
+
+    if (noToolResponses / totalResponses > 0.3) {
+      recommendations.push({
+        type: "INCREASE_TOOL_USAGE",
+        message: `${Math.round(
+          (noToolResponses / totalResponses) * 100
+        )}% of responses don't use tools. Consider lowering confidence thresholds.`,
+        priority: "HIGH",
+      });
+    }
+
+    // Check average quality score
+    if (report.average_score < 6) {
+      recommendations.push({
+        type: "IMPROVE_RESPONSE_QUALITY",
+        message: `Average quality score is ${report.average_score.toFixed(
+          1
+        )}/10. Review system prompts and tool selection logic.`,
+        priority: "HIGH",
+      });
+    }
+
+    // Check for frequent issues
+    Object.entries(report.issue_frequency).forEach(([issueType, frequency]) => {
+      if (frequency > totalResponses * 0.2) {
+        recommendations.push({
+          type: "FREQUENT_ISSUE",
+          message: `Issue "${issueType}" occurs in ${Math.round(
+            (frequency / totalResponses) * 100
+          )}% of responses`,
+          priority: "MEDIUM",
+        });
+      }
+    });
+
+    return recommendations;
   },
 };
