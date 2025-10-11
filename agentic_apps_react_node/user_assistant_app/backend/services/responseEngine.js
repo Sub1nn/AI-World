@@ -1,6 +1,36 @@
 import { systemPrompts } from "../utils/systemPrompts.js";
 
 const INTENT_DEFINITIONS = {
+  system_identity: {
+    keywords: [
+      "who are you",
+      "what are you",
+      "who created you",
+      "who made you",
+      "who built you",
+      "who developed you",
+      "what is atlas",
+      "about atlas",
+      "your creator",
+      "your developer",
+      "tell me about yourself",
+      "creator name",
+      "name of your creator",
+      "who is your creator",
+      "created by who",
+      "made by whom",
+    ],
+    type: "system_identity",
+    priority_keywords: [
+      "who are you",
+      "what are you",
+      "who created",
+      "creator name",
+      "your creator",
+    ],
+    context_keywords: ["atlas", "system", "ai", "name"],
+    weight: 3.0, // High weight to ensure identity questions are caught
+  },
   safety: {
     keywords: [
       "safe",
@@ -190,7 +220,83 @@ export const responseEngine = {
     try {
       const lowerMessage = message.toLowerCase().trim();
 
-      // Check for conversation continuation first
+      // PRIORITY CHECK: System identity questions first (before any other analysis)
+      // Must be very specific to avoid false positives
+      const identityKeywords = [
+        "who are you",
+        "what are you",
+        "who created you",
+        "who made you",
+        "who built you",
+        "who developed you",
+        "what is atlas",
+        "about atlas",
+        "your creator",
+        "your developer",
+        "tell me about yourself",
+        "creator name",
+        "name of your creator",
+        "who is your creator",
+        "created by who",
+        "made by whom",
+      ];
+
+      // ENHANCED: More precise matching to avoid false positives
+      const isIdentityQuestion = identityKeywords.some((keyword) => {
+        // Exact phrase matching for better precision
+        if (keyword.includes(" ")) {
+          return lowerMessage.includes(keyword);
+        } else {
+          // For single words, ensure they're not part of other phrases
+          const words = lowerMessage.split(/\s+/);
+          return words.includes(keyword);
+        }
+      });
+
+      // ADDITIONAL CHECK: Must be a direct question about the system, not travel planning
+      const isDefinitelyIdentityQuestion =
+        isIdentityQuestion &&
+        (lowerMessage.startsWith("who are") ||
+          lowerMessage.startsWith("what are") ||
+          lowerMessage.startsWith("who created") ||
+          lowerMessage.startsWith("who made") ||
+          lowerMessage.startsWith("who built") ||
+          lowerMessage.includes("your creator") ||
+          lowerMessage.includes("creator name") ||
+          lowerMessage.includes("name of your creator") ||
+          (lowerMessage.includes("who") &&
+            lowerMessage.includes("created") &&
+            lowerMessage.includes("you")));
+
+      if (isDefinitelyIdentityQuestion) {
+        console.log(
+          "🤖 IDENTITY QUESTION DETECTED - bypassing travel analysis"
+        );
+        return {
+          primaryIntent: {
+            type: "system_identity",
+            confidence: 1.0, // Maximum confidence for identity questions
+          },
+          allIntents: {
+            system_identity: { type: "system_identity", confidence: 1.0 },
+          },
+          locations: [], // No locations for identity questions
+          urgency: "normal",
+          complexity: "low",
+          isConversationContinuation: false,
+          multiToolRequirements: {
+            shouldUseMultipleTools: false, // Never use tools for identity
+            requiredTools: [],
+            reasoning: ["Identity question - no tools needed"],
+          },
+          travelContext: { type: "system", indicators: ["identity"] },
+          messageLength: message.length,
+          hasQuestions: message.includes("?"),
+          hasDates: [],
+        };
+      }
+
+      // Check for conversation continuation
       const isConversationContinuation = CONTINUATION_PATTERNS.some((pattern) =>
         pattern.test(lowerMessage)
       );
