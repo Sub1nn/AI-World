@@ -9,6 +9,12 @@ export const intelligentConfig = {
 
   // Intent-specific configurations
   INTENT_CONFIGS: {
+    system_identity: {
+      always_use_tools: false,
+      required_context: [],
+      fallback_allowed: false,
+      confidence_boost: 0.0, // No boost needed for identity questions
+    },
     safety_inquiry: {
       always_use_tools: true,
       required_context: ["location", "country"],
