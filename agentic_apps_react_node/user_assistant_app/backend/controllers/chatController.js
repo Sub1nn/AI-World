@@ -18,13 +18,13 @@ class RequestQueue {
   async waitForTurn() {
     const now = Date.now();
     const timeSinceLastRequest = now - this.lastRequestTime;
-
+    
     if (timeSinceLastRequest < this.minInterval) {
       const waitTime = this.minInterval - timeSinceLastRequest;
       console.log(`🚦 Rate limit prevention: waiting ${waitTime}ms`);
-      await new Promise((resolve) => setTimeout(resolve, waitTime));
+      await new Promise(resolve => setTimeout(resolve, waitTime));
     }
-
+    
     this.lastRequestTime = Date.now();
   }
 }
@@ -45,7 +45,7 @@ function getOrCreateContext(userId) {
           interests: [],
           preferredComplexity: "medium",
           preferredTools: {},
-          travelPurposes: [],
+          travelPurposes: []
         },
         createdAt: Date.now(),
         lastActive: Date.now(),
@@ -69,7 +69,7 @@ function getOrCreateContext(userId) {
         interests: [],
         preferredComplexity: "medium",
         preferredTools: {},
-        travelPurposes: [],
+        travelPurposes: []
       },
       createdAt: Date.now(),
       lastActive: Date.now(),
@@ -117,209 +117,176 @@ function generateRequestId() {
 function determineToolChoice(message, userIntent, context) {
   const lowerMessage = message.toLowerCase();
 
-  console.log(
-    `🎯 Analyzing tool choice for intent: ${userIntent.primaryIntent.type} (confidence: ${userIntent.primaryIntent.confidence})`
-  );
+  console.log(`🎯 Analyzing tool choice for intent: ${userIntent.primaryIntent.type} (confidence: ${userIntent.primaryIntent.confidence})`);
+
+  // STEP 0: Handle system/identity questions - ABSOLUTELY NO TOOLS
+  if (userIntent.primaryIntent.type === "system_identity") {
+    console.log(`🤖 SYSTEM IDENTITY QUERY - FORCING NO TOOLS`);
+    return "none";
+  }
+
+  // ADDITIONAL SAFETY CHECK: If message contains identity keywords, force no tools
+  const identityKeywords = [
+    "who are you", "what are you", "who created", "who made", "who built",
+    "who developed", "your creator", "creator name", "name of your creator"
+  ];
+  
+  // More precise checking to avoid false positives
+  const hasIdentityKeywords = identityKeywords.some(keyword => {
+    if (keyword.includes(" ")) {
+      return lowerMessage.includes(keyword);
+    }
+    return false; // Only check multi-word phrases to avoid false positives
+  });
+  
+  if (hasIdentityKeywords && (
+    lowerMessage.startsWith("who are") ||
+    lowerMessage.startsWith("what are") ||
+    lowerMessage.startsWith("who created") ||
+    lowerMessage.includes("your creator")
+  )) {
+    console.log(`🚫 IDENTITY KEYWORDS DETECTED - BLOCKING ALL TOOLS`);
+    return "none";
+  }
 
   // STEP 1: Handle conversation continuations (like "Yes please")
   if (userIntent.isConversationContinuation && context.history.length > 0) {
     const lastAssistantMessage = context.history
       .slice()
       .reverse()
-      .find((msg) => msg.role === "assistant");
+      .find(msg => msg.role === "assistant");
 
     if (lastAssistantMessage?.content) {
       // Check if continuing a specific topic
-      if (
-        lastAssistantMessage.content.toLowerCase().includes("tennis") ||
-        lastAssistantMessage.content.toLowerCase().includes("sports")
-      ) {
+      if (lastAssistantMessage.content.toLowerCase().includes("tennis") || 
+          lastAssistantMessage.content.toLowerCase().includes("sports")) {
         console.log(`🎾 Continuation: Tennis/sports activity search`);
         return {
           type: "function",
-          function: { name: "local_experiences_and_attractions" },
+          function: { name: "local_experiences_and_attractions" }
         };
       }
-
+      
       // Check for restaurant recommendations continuation
-      if (
-        lastAssistantMessage.content.toLowerCase().includes("restaurant") ||
-        lastAssistantMessage.content.toLowerCase().includes("dining")
-      ) {
+      if (lastAssistantMessage.content.toLowerCase().includes("restaurant") ||
+          lastAssistantMessage.content.toLowerCase().includes("dining")) {
         console.log(`🍽️ Continuation: Restaurant search`);
         return {
           type: "function",
-          function: { name: "intelligent_restaurant_discovery" },
+          function: { name: "intelligent_restaurant_discovery" }
         };
       }
 
       // Check for accommodation continuation
-      if (
-        lastAssistantMessage.content.toLowerCase().includes("hotel") ||
-        lastAssistantMessage.content.toLowerCase().includes("accommodation")
-      ) {
+      if (lastAssistantMessage.content.toLowerCase().includes("hotel") ||
+          lastAssistantMessage.content.toLowerCase().includes("accommodation")) {
         console.log(`🏨 Continuation: Accommodation search`);
         return {
           type: "function",
-          function: { name: "smart_accommodation_finder" },
+          function: { name: "smart_accommodation_finder" }
         };
       }
     }
   }
 
   // STEP 2: Use the intelligent tool selector
-  const toolChoice = IntelligentToolSelector.generateToolChoice(
-    message,
-    userIntent,
-    context
-  );
+  const toolChoice = IntelligentToolSelector.generateToolChoice(message, userIntent, context);
   if (toolChoice !== "none") {
     return toolChoice;
   }
 
   // STEP 3: Enhanced fallback logic for edge cases
   // Safety queries ALWAYS get safety intelligence if location present
-  if (
-    (lowerMessage.includes("safe") ||
-      lowerMessage.includes("security") ||
-      lowerMessage.includes("dangerous") ||
-      lowerMessage.includes("risk")) &&
-    userIntent.locations?.length > 0
-  ) {
-    console.log(
-      `🚨 Safety keywords detected with location - forcing safety tool`
-    );
+  if ((lowerMessage.includes("safe") || lowerMessage.includes("security") || 
+       lowerMessage.includes("dangerous") || lowerMessage.includes("risk")) && 
+       userIntent.locations?.length > 0) {
+    console.log(`🚨 Safety keywords detected with location - forcing safety tool`);
     return {
       type: "function",
-      function: { name: "comprehensive_safety_intelligence" },
+      function: { name: "comprehensive_safety_intelligence" }
     };
   }
 
   // Weather queries ALWAYS get weather analysis if location present
-  if (
-    (lowerMessage.includes("weather") ||
-      lowerMessage.includes("climate") ||
-      lowerMessage.includes("temperature") ||
-      lowerMessage.includes("forecast")) &&
-    userIntent.locations?.length > 0
-  ) {
-    console.log(
-      `🌤️ Weather keywords detected with location - forcing weather tool`
-    );
+  if ((lowerMessage.includes("weather") || lowerMessage.includes("climate") ||
+       lowerMessage.includes("temperature") || lowerMessage.includes("forecast")) &&
+       userIntent.locations?.length > 0) {
+    console.log(`🌤️ Weather keywords detected with location - forcing weather tool`);
     return {
       type: "function",
-      function: { name: "comprehensive_weather_analysis" },
+      function: { name: "comprehensive_weather_analysis" }
     };
   }
 
   // Activity questions with outdoor context
-  if (
-    userIntent.primaryIntent.type === "activity_recommendations" &&
-    userIntent.locations?.length > 0
-  ) {
+  if (userIntent.primaryIntent.type === "activity_recommendations" && 
+      userIntent.locations?.length > 0) {
     const isOutdoorActivity = [
-      "play",
-      "tennis",
-      "golf",
-      "football",
-      "run",
-      "bike",
-      "walk",
-      "hike",
-      "outdoor",
-      "sports",
-      "courts",
-      "facilities",
-    ].some((keyword) => lowerMessage.includes(keyword));
+      "play", "tennis", "golf", "football", "run", "bike", "walk", 
+      "hike", "outdoor", "sports", "courts", "facilities"
+    ].some(keyword => lowerMessage.includes(keyword));
 
-    const isWeatherDependent = [
-      "today",
-      "tomorrow",
-      "this",
-      "planning",
-      "thinking",
-    ].some((keyword) => lowerMessage.includes(keyword));
+    const isWeatherDependent = ["today", "tomorrow", "this", "planning", "thinking"].some(keyword =>
+      lowerMessage.includes(keyword));
 
     if (isOutdoorActivity && isWeatherDependent) {
-      console.log(
-        `🌤️ Outdoor activity planning detected - using weather analysis for optimal timing`
-      );
+      console.log(`🌤️ Outdoor activity planning detected - using weather analysis for optimal timing`);
       return {
         type: "function",
-        function: { name: "comprehensive_weather_analysis" },
+        function: { name: "comprehensive_weather_analysis" }
       };
-    } else if (
-      ["where", "courts", "facilities", "venues", "places"].some((keyword) =>
-        lowerMessage.includes(keyword)
-      )
-    ) {
+    } else if (["where", "courts", "facilities", "venues", "places"].some(keyword =>
+        lowerMessage.includes(keyword))) {
       console.log(`📍 Venue search detected - using attractions tool`);
       return {
         type: "function",
-        function: { name: "local_experiences_and_attractions" },
+        function: { name: "local_experiences_and_attractions" }
       };
     }
   }
 
   // High-confidence location-based queries should use tools
-  if (
-    userIntent.locations?.length > 0 &&
-    userIntent.primaryIntent.confidence >= 0.4
-  ) {
-    console.log(
-      `🌍 Location-based query with medium+ confidence - selecting appropriate tool`
-    );
+  if (userIntent.locations?.length > 0 && userIntent.primaryIntent.confidence >= 0.4) {
+    console.log(`🌍 Location-based query with medium+ confidence - selecting appropriate tool`);
 
     // Enhanced keyword-to-tool mapping with context
     const contextualMapping = {
       restaurant: {
         keywords: ["food", "restaurant", "eat", "dining", "cuisine"],
-        tool: "intelligent_restaurant_discovery",
+        tool: "intelligent_restaurant_discovery"
       },
       accommodation: {
         keywords: ["hotel", "stay", "accommodation", "lodge", "book"],
-        tool: "smart_accommodation_finder",
+        tool: "smart_accommodation_finder"
       },
       culture: {
         keywords: ["culture", "people", "custom", "tradition", "etiquette"],
-        tool: "cultural_and_travel_insights",
+        tool: "cultural_and_travel_insights"
       },
       activities: {
-        keywords: [
-          "activities",
-          "attractions",
-          "things to do",
-          "experience",
-          "visit",
-          "see",
-        ],
-        tool: "local_experiences_and_attractions",
-      },
+        keywords: ["activities", "attractions", "things to do", "experience", "visit", "see"],
+        tool: "local_experiences_and_attractions"
+      }
     };
 
     // Find best matching category
     for (const [category, config] of Object.entries(contextualMapping)) {
-      if (config.keywords.some((keyword) => lowerMessage.includes(keyword))) {
+      if (config.keywords.some(keyword => lowerMessage.includes(keyword))) {
         console.log(`🎯 Selected ${config.tool} based on ${category} keywords`);
         return {
           type: "function",
-          function: { name: config.tool },
+          function: { name: config.tool }
         };
       }
     }
 
     // Default comprehensive approach for travel planning
-    if (
-      ["travel to", "visit", "trip to", "going to", "plan"].some((phrase) =>
-        lowerMessage.includes(phrase)
-      )
-    ) {
-      console.log(
-        `🗺️ Comprehensive travel planning detected - using cultural insights as entry point`
-      );
+    if (["travel to", "visit", "trip to", "going to", "plan"].some(phrase => 
+        lowerMessage.includes(phrase))) {
+      console.log(`🗺️ Comprehensive travel planning detected - using cultural insights as entry point`);
       return {
-        type: "function",
-        function: { name: "cultural_and_travel_insights" },
+        type: "function", 
+        function: { name: "cultural_and_travel_insights" }
       };
     }
 
@@ -327,7 +294,7 @@ function determineToolChoice(message, userIntent, context) {
     console.log(`🏛️ General location query - defaulting to cultural insights`);
     return {
       type: "function",
-      function: { name: "cultural_and_travel_insights" },
+      function: { name: "cultural_and_travel_insights" }
     };
   }
 
@@ -351,15 +318,11 @@ async function callGroqAPIWithRetry(
       // Add progressive delay before each attempt (including first)
       if (attempt > 1) {
         const delay = Math.min(baseDelay * Math.pow(2, attempt - 2), 8000);
-        console.log(
-          `⏳ Rate limit backoff: waiting ${delay}ms before attempt ${attempt}`
-        );
+        console.log(`⏳ Rate limit backoff: waiting ${delay}ms before attempt ${attempt}`);
         await new Promise((resolve) => setTimeout(resolve, delay));
       } else {
         // Even add small delay for first attempt to avoid rapid requests
-        await new Promise((resolve) =>
-          setTimeout(resolve, 500 + Math.random() * 1000)
-        );
+        await new Promise((resolve) => setTimeout(resolve, 500 + Math.random() * 1000));
       }
 
       const response = await callGroqAPI(message, context, userIntent);
@@ -392,7 +355,7 @@ async function callGroqAPIWithRetry(
       // For rate limits, provide better logging
       if (error.message.includes("429")) {
         console.log(`🚦 Rate limit hit on attempt ${attempt}/${maxRetries}`);
-
+        
         // If this is the last attempt, provide helpful info
         if (attempt === maxRetries) {
           console.log("🔴 Rate limit exceeded - switching to fallback mode");
@@ -407,7 +370,7 @@ async function callGroqAPIWithRetry(
 // Helper function to provide intent-based fallback guidance
 function getIntentBasedFallback(userIntent, context) {
   const location = userIntent.locations?.[0] || "your destination";
-
+  
   switch (userIntent.primaryIntent.type) {
     case "safety_inquiry":
       return `**SAFETY GUIDANCE FOR ${location.toUpperCase()}:**
@@ -464,17 +427,11 @@ async function callGroqAPI(message, context, userIntent) {
     }
 
     // Boost confidence for critical intents
-    const enhancedUserIntent = IntelligentToolSelector.boostIntentConfidence(
-      userIntent,
-      message
-    );
+    const enhancedUserIntent = IntelligentToolSelector.boostIntentConfidence(userIntent, message);
 
     const systemPrompt = {
       role: "system",
-      content: responseEngine.enhanceSystemPrompt(
-        enhancedUserIntent,
-        context.history
-      ),
+      content: responseEngine.enhanceSystemPrompt(enhancedUserIntent, context.history),
     };
 
     // Clean the conversation history - keep more context for better continuity
@@ -489,11 +446,7 @@ async function callGroqAPI(message, context, userIntent) {
       .slice(-6); // Increased from 4 to 6 for better context
 
     // Enhanced tool choice with comprehensive logging
-    const toolChoice = determineToolChoice(
-      message,
-      enhancedUserIntent,
-      context
-    );
+    const toolChoice = determineToolChoice(message, enhancedUserIntent, context);
     console.log(`🔧 Tool choice decision: ${JSON.stringify(toolChoice)}`);
 
     const requestData = {
@@ -506,7 +459,7 @@ async function callGroqAPI(message, context, userIntent) {
       tools: toolService.getTools(),
       tool_choice: toolChoice,
       max_tokens: 3000, // Increased for more detailed responses
-      temperature: 0.2, // Slightly more deterministic
+      temperature: 0.2, // Slightly more deterministic 
       top_p: 0.9,
       frequency_penalty: 0.1,
       presence_penalty: 0.1,
@@ -568,7 +521,7 @@ function updateContext(
         intent: userIntent.primaryIntent.type,
         toolsUsed,
         timestamp: new Date().toISOString(),
-        confidence: userIntent.primaryIntent.confidence,
+        confidence: userIntent.primaryIntent.confidence
       }
     );
 
@@ -579,7 +532,7 @@ function updateContext(
 
     // Enhanced user profile learning
     const profile = context.userProfile;
-
+    
     // Update interests based on locations and intent
     if (userIntent.locations && userIntent.locations.length > 0) {
       const currentInterests = profile.interests || [];
@@ -590,7 +543,7 @@ function updateContext(
     // Learn from travel context
     if (userIntent.travelContext?.purposes) {
       if (!profile.travelPurposes) profile.travelPurposes = [];
-      userIntent.travelContext.purposes.forEach((purpose) => {
+      userIntent.travelContext.purposes.forEach(purpose => {
         if (!profile.travelPurposes.includes(purpose)) {
           profile.travelPurposes.push(purpose);
         }
@@ -608,10 +561,11 @@ function updateContext(
     // Track tool preferences
     if (toolsUsed.length > 0) {
       if (!profile.preferredTools) profile.preferredTools = {};
-      toolsUsed.forEach((tool) => {
+      toolsUsed.forEach(tool => {
         profile.preferredTools[tool] = (profile.preferredTools[tool] || 0) + 1;
       });
     }
+
   } catch (err) {
     console.error("❌ Context update error:", err.message);
   }
@@ -937,8 +891,8 @@ async function processWithTools(
     );
 
     // Implement progressive delay for rate limit management
-    const attemptDelay = Math.min(1000 + Math.random() * 2000, 3000); // Random 1-3 second delay
-    await new Promise((resolve) => setTimeout(resolve, attemptDelay));
+    const attemptDelay = Math.min(1000 + (Math.random() * 2000), 3000); // Random 1-3 second delay
+    await new Promise(resolve => setTimeout(resolve, attemptDelay));
 
     // Generate final response with enhanced system prompt and better error handling
     const finalResponse = await axios.post(
@@ -978,7 +932,7 @@ async function processWithTools(
     const qualityAnalysis = ResponseMonitor.analyzeResponseQuality(
       message,
       userIntent,
-      finalContent,
+      finalContent, 
       toolCalls.map((tc) => tc.function.name),
       context
     );
@@ -1031,15 +985,11 @@ async function processWithTools(
       );
 
       // Create a better formatted response using the tool results
-      const toolSummary = toolCalls.map((tc) => tc.function.name).join(", ");
-
+      const toolSummary = toolCalls.map(tc => tc.function.name).join(", ");
+      
       const enhancedFallbackResponse = `**ATLAS TRAVEL INTELLIGENCE - MULTI-TOOL ANALYSIS**
 
-Based on comprehensive analysis using ${
-        toolCalls.length
-      } intelligence tools (${toolSummary}), here's what I found for ${
-        userIntent.locations?.[0] || "your destination"
-      }:
+Based on comprehensive analysis using ${toolCalls.length} intelligence tools (${toolSummary}), here's what I found for ${userIntent.locations?.[0] || "your destination"}:
 
 **INTELLIGENCE GATHERED:**
 ✅ **Local Experiences & Attractions** - Current activity options and venue recommendations
@@ -1069,7 +1019,7 @@ Please try your request again in a few moments for the complete formatted analys
         response_metadata: {
           tools_executed: toolCalls.length,
           processing_time: Date.now() - startTime,
-          data_collection_successful: true,
+          data_collection_successful: true
         },
         requestId,
       });
@@ -1175,6 +1125,15 @@ export const chatController = {
       const context = getOrCreateContext(userId);
       const userIntent = responseEngine.analyzeUserIntent(sanitizedMessage);
 
+      // DEBUG: Log the intent analysis results
+      console.log(`🔍 Intent Analysis Results:`, {
+        type: userIntent.primaryIntent.type,
+        confidence: userIntent.primaryIntent.confidence,
+        locations: userIntent.locations,
+        messageAnalyzed: sanitizedMessage.substring(0, 50),
+        isSystemIdentity: userIntent.primaryIntent.type === "system_identity"
+      });
+
       // Handle conversation continuations (like "Yes please")
       if (userIntent.isConversationContinuation && context.history.length > 0) {
         console.log(
@@ -1195,17 +1154,13 @@ export const chatController = {
             "looking for",
             "tennis courts",
             "facilities",
-            "interested in",
+            "interested in"
           ].some((phrase) =>
             lastAssistantMessage.content.toLowerCase().includes(phrase)
           );
 
           if (wasAskingForRecommendations) {
-            console.log(
-              `🎾 Continuing ${
-                lastAssistantMessage.intent || "recommendation"
-              } search context`
-            );
+            console.log(`🎾 Continuing ${lastAssistantMessage.intent || 'recommendation'} search context`);
 
             // Extract location from conversation history
             let location = null;
@@ -1243,14 +1198,75 @@ export const chatController = {
       }
 
       console.log(
-        `🎯 Intent Analysis - Type: ${
-          userIntent.primaryIntent.type
-        }, Confidence: ${userIntent.primaryIntent.confidence}, Complexity: ${
-          userIntent.complexity
-        }, Multi-tool: ${
-          userIntent.multiToolRequirements?.shouldUseMultipleTools || false
-        }`
+        `🎯 Intent Analysis - Type: ${userIntent.primaryIntent.type}, Confidence: ${userIntent.primaryIntent.confidence}, Complexity: ${userIntent.complexity}, Multi-tool: ${userIntent.multiToolRequirements?.shouldUseMultipleTools || false}`
       );
+
+      // SPECIAL HANDLING: Identity questions get immediate direct response
+      if (userIntent.primaryIntent.type === "system_identity") {
+        console.log(`🤖 PROCESSING IDENTITY QUESTION DIRECTLY`);
+        
+        const identityResponse = `**I am ATLAS** - Advanced Travel & Location Assistant System.
+
+**I was created by Subin Khatiwada**, a talented Mechatronics Engineer and Full-Stack Developer based in Finland.
+
+**ABOUT MY CREATOR - SUBIN KHATIWADA:**
+
+**PROFESSIONAL BACKGROUND:**
+• Mechatronics Engineer specializing in mechanical design, control systems, and software development
+• Currently pursuing Master of Science (MSc) in Mechatronics System Engineering at Lappeenranta-Lahti University of Technology (LUT)
+• Bachelor of Engineering in Mechanical Engineering & Production Technology from Häme University of Applied Sciences
+• Former Business Owner & Partner at Subimala Oy (2020-2023)
+
+**TECHNICAL EXPERTISE:**
+• Full-Stack Web Development (MERN stack, PostgreSQL, Docker, Kubernetes, AWS)
+• Machine Learning and Data Analysis (Python, RNN, CNN, Transformer architectures)
+• Programming and Software Development (Python, MATLAB, JavaScript, TypeScript)
+• Mechanical Systems Design (CREO, SolidWorks, CAD modeling)
+
+**CURRENT WORK & RESEARCH:**
+• Developing control system models for mechatronic machines
+• Building machine learning models including deep learning architectures
+• Working on hydraulic crane modeling with SolidWorks and Simscape Multibody simulation
+• Forecasting models for large sequential data analysis
+
+**CONTACT INFORMATION:**
+• Email: subinkhatiwada@gmail.com
+• Phone: (+358) 445509013
+• Location: Riihimaki, Finland
+• LinkedIn: https://www.linkedin.com/in/subin-khatiwada-0278282a4/
+• GitHub: https://github.com/Sub1nn
+
+**MY CAPABILITIES:**
+• Real-time safety and security intelligence
+• Comprehensive weather analysis and forecasting
+• Smart accommodation and restaurant discovery
+• Cultural insights and travel etiquette guidance
+• Local experiences and attraction recommendations
+• Multi-tool analysis for complex travel planning
+
+Subin's diverse background in mechatronics, AI/ML, and full-stack development enabled him to create me as a sophisticated travel intelligence system.`;
+
+        updateContext(context, sanitizedMessage, identityResponse, userIntent, []);
+        
+        return res.json({
+          result: identityResponse,
+          tools_used: [],
+          context_location: null,
+          timestamp: new Date().toISOString(),
+          intent_analysis: {
+            primary_intent: "system_identity",
+            confidence: 1.0,
+            complexity: "low",
+            urgency: "normal"
+          },
+          response_metadata: {
+            tools_executed: 0,
+            processing_time: Date.now() - startTime,
+            is_identity_response: true
+          },
+          requestId,
+        });
+      }
 
       // Log multi-tool requirements
       if (userIntent.multiToolRequirements?.shouldUseMultipleTools) {
@@ -1315,13 +1331,8 @@ export const chatController = {
           }
 
           // Check if we expected tools but didn't get them
-          if (
-            userIntent.primaryIntent.confidence > 0.7 &&
-            userIntent.locations?.length > 0
-          ) {
-            console.log(
-              "⚠️ High confidence location query without tools - potential missed opportunity"
-            );
+          if (userIntent.primaryIntent.confidence > 0.7 && userIntent.locations?.length > 0) {
+            console.log("⚠️ High confidence location query without tools - potential missed opportunity");
           }
 
           // FIXED: Call standalone function instead of this.processDirectResponse
@@ -1501,24 +1512,24 @@ export const chatController = {
   async getQualityAnalytics(req, res) {
     try {
       const report = ResponseMonitor.getAnalyticsReport();
-
+      
       if (!report) {
         return res.json({
           message: "No response data available yet",
-          timestamp: new Date().toISOString(),
+          timestamp: new Date().toISOString()
         });
       }
 
       res.json({
         ...report,
         timestamp: new Date().toISOString(),
-        recommendations: this.generateQualityRecommendations(report),
+        recommendations: this.generateQualityRecommendations(report)
       });
     } catch (err) {
       console.error("Quality analytics error:", err.message);
       res.status(500).json({
         error: "Failed to get quality analytics",
-        message: "Unable to retrieve response quality data",
+        message: "Unable to retrieve response quality data"
       });
     }
   },
@@ -1530,25 +1541,21 @@ export const chatController = {
     // Check if too many responses don't use tools
     const noToolResponses = report.tool_usage[0] || 0;
     const totalResponses = report.total_responses;
-
+    
     if (noToolResponses / totalResponses > 0.3) {
       recommendations.push({
         type: "INCREASE_TOOL_USAGE",
-        message: `${Math.round(
-          (noToolResponses / totalResponses) * 100
-        )}% of responses don't use tools. Consider lowering confidence thresholds.`,
-        priority: "HIGH",
+        message: `${Math.round(noToolResponses / totalResponses * 100)}% of responses don't use tools. Consider lowering confidence thresholds.`,
+        priority: "HIGH"
       });
     }
 
     // Check average quality score
     if (report.average_score < 6) {
       recommendations.push({
-        type: "IMPROVE_RESPONSE_QUALITY",
-        message: `Average quality score is ${report.average_score.toFixed(
-          1
-        )}/10. Review system prompts and tool selection logic.`,
-        priority: "HIGH",
+        type: "IMPROVE_RESPONSE_QUALITY", 
+        message: `Average quality score is ${report.average_score.toFixed(1)}/10. Review system prompts and tool selection logic.`,
+        priority: "HIGH"
       });
     }
 
@@ -1557,10 +1564,8 @@ export const chatController = {
       if (frequency > totalResponses * 0.2) {
         recommendations.push({
           type: "FREQUENT_ISSUE",
-          message: `Issue "${issueType}" occurs in ${Math.round(
-            (frequency / totalResponses) * 100
-          )}% of responses`,
-          priority: "MEDIUM",
+          message: `Issue "${issueType}" occurs in ${Math.round(frequency / totalResponses * 100)}% of responses`,
+          priority: "MEDIUM"
         });
       }
     });
