@@ -1,4 +1,3 @@
-// config/rateLimiter.js - Rate limiting configuration
 import rateLimit from "express-rate-limit";
 
 export const rateLimiter = rateLimit({
