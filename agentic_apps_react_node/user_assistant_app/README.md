@@ -55,6 +55,8 @@ Every final output includes:
   - 🛡️ _Safety Advisory_
   - 🕌 _Cultural Etiquette_
   - 📍 _Local Experiences & Attractions_
+  - 🍽️ _Cuisine Highlights & Dining Recommendations_
+  - 🏨 _Accommodation Insights & Stay Recommendations_
 
 ---
 
@@ -90,13 +92,13 @@ Every final output includes:
 
 ## ⚙️ Tech Stack
 
-| Layer     | Technologies                                          | Purpose                                 |
-| --------- | ----------------------------------------------------- | --------------------------------------- |
-| Frontend  | React, Vite, TailwindCSS, shadcn/ui                   | Clean, modern chat UI                   |
-| Backend   | Node.js, Express                                      | API routing, tool orchestration         |
-| AI Engine | Custom `responseEngine.js`                            | Intent detection, structured formatting |
-| LLM       | OpenAI / Gemini / Any compatible model                | Natural language reasoning              |
-| APIs      | Weather API, Safety API, Attractions API, Cuisine API | Real-time travel intelligence           |
+| Layer     | Technologies                                                         | Purpose                                 |
+| --------- | -------------------------------------------------------------------- | --------------------------------------- |
+| Frontend  | React, Vite, TailwindCSS, shadcn/ui                                  | Clean, modern chat UI                   |
+| Backend   | Node.js, Express, Vector DB                                          | API routing, tool orchestration         |
+| AI Engine | Custom `responseEngine` Agentic flow                                 | Intent detection, structured formatting |
+| LLM       | OpenAI / Gemini / Any compatible model                               | Natural language reasoning              |
+| APIs      | Weather API, Safety API, Attractions API, Cuisine & Accomodation API | Real-time travel intelligence           |
 
 ---
 
@@ -155,10 +157,13 @@ Create a `.env`:
 
 ```
 PORT=5000
-OPENAI_API_KEY=your_key_here
-WEATHER_API_KEY=your_weather_key
-SAFETY_API_KEY=your_safety_key
-CLIENT_URL=http://localhost:5173
+GROQ_API_KEY = LLM response
+GOOGLE_API_KEY = Live traffic data
+GOOGLE_PLACES_API_KEY = Live accomodation
+PINECONE_API_KEY = Vector DB
+NEWS_API_KEY = Current situation
+OPEN_WEATHER_KEY = Live weather
+YELP_API_KEY = Live news
 ```
 
 ---
