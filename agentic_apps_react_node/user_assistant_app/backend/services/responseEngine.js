@@ -737,196 +737,249 @@ export const responseEngine = {
 
   formatProfessionalResponse(rawResponse, toolsUsed, userIntent) {
     try {
-      let response = rawResponse;
+      let response = rawResponse || "";
 
-      // Clean up redundant tool mentions
-      const toolNames = toolsUsed.map((tool) =>
-        tool.replace(/comprehensive_|smart_|intelligent_/g, "")
-      );
+      // Normalize odd spacing/newlines
+      response = response
+        .replace(/\r/g, "")
+        .replace(/[ \t]+\n/g, "\n")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
 
-      // Remove redundant acknowledgments
+      // Remove boilerplate / acknowledgments that clutter the UI
       const redundantPhrases = [
-        /Thank you for providing.*?tool call\.?\s*/gi,
+        /Thank you for providing.*?(tool call|information)\.?\s*/gi,
         /Based on the.*?report,?\s*/gi,
         /According to the.*?assessment,?\s*/gi,
         /The.*?indicates that\s*/gi,
         /From the.*?analysis,?\s*/gi,
+        /Here is the information you requested:?\s*/gi,
+        /I have analyzed the data and\s*/gi,
+        /I have reviewed the results and\s*/gi,
       ];
+      for (const rx of redundantPhrases) response = response.replace(rx, "");
 
-      redundantPhrases.forEach((pattern) => {
-        response = response.replace(pattern, "");
-      });
-
-      // Remove empty lines and excessive spacing
+      // Clean spacing again
       response = response
+        .replace(/[ \t]+/g, " ")
         .replace(/\n{3,}/g, "\n\n")
-        .replace(/^\s+/gm, "")
         .trim();
 
-      // ENHANCED: Remove empty headings and fix structure
-      response = this.removeEmptyHeadings(response);
+      // If it's already nicely formatted, don't reformat
+      const alreadyPretty =
+        /^🕑/.test(response) ||
+        /📊 INTELLIGENCE ANALYSIS/.test(response) ||
+        /📑 EXECUTIVE SUMMARY/.test(response) ||
+        /🎯 KEY RECOMMENDATIONS/.test(response);
 
-      // Add executive summary for complex responses (but only if content exists)
-      if (
-        (userIntent.complexity === "high" || toolsUsed.length > 2) &&
-        !response.includes("**EXECUTIVE SUMMARY**") &&
-        response.length > 200
-      ) {
-        const keyPoints = this.extractKeyPoints(response);
-        if (keyPoints.length > 0) {
-          const summary = keyPoints.slice(0, 2).join(" • ");
-          response = `**EXECUTIVE SUMMARY**\n${summary}\n\n---\n\n${response}`;
-        }
-      }
-
-      // ENHANCED: Only structure if we have substantial content
-      if (toolsUsed.length > 1 && response.length > 300) {
+      if (!alreadyPretty && response.length > 200) {
         response = this.addResponseStructure(response, userIntent, toolsUsed);
-        // Clean up again after structuring
         response = this.removeEmptyHeadings(response);
       }
 
-      return response;
+      return response.trim();
     } catch (error) {
-      console.error("Response formatting error:", error.message);
+      console.error("Response formatting error:", error?.message);
       return rawResponse;
     }
   },
 
   // NEW: Remove empty headings and sections
-  removeEmptyHeadings(response) {
-    const lines = response.split("\n");
-    const cleanedLines = [];
+  removeEmptyHeadings(text) {
+    if (!text) return text;
+
+    const lines = text.split("\n");
+    const cleaned = [];
+    const isHead = (ln) =>
+      /^(📊 INTELLIGENCE ANALYSIS|📑 EXECUTIVE SUMMARY|🎯 KEY RECOMMENDATIONS|🔧 TOOLS USED|🌤️ Weather Outlook|🛡️ Safety Advisory|🕌 Cultural Etiquette|📍 Local Experiences & Attractions|\*\*[A-Z ].*\*\*)\s*$/.test(
+        (ln || "").trim()
+      );
 
     for (let i = 0; i < lines.length; i++) {
-      const currentLine = lines[i].trim();
+      const current = lines[i];
 
-      // If this is a heading (starts and ends with **)
-      if (
-        currentLine.startsWith("**") &&
-        currentLine.endsWith("**") &&
-        currentLine.length > 4
-      ) {
-        // Check if there's actual content after this heading
+      if (isHead(current)) {
+        // Look ahead for next non-empty, non-heading
+        let j = i + 1;
         let hasContent = false;
-        let nextContentIndex = -1;
-
-        // Look ahead for the next non-empty, non-heading line
-        for (let j = i + 1; j < lines.length; j++) {
-          const nextLine = lines[j].trim();
-          if (nextLine === "") continue; // Skip empty lines
-
-          // If we hit another heading, stop looking
-          if (nextLine.startsWith("**") && nextLine.endsWith("**")) {
-            break;
+        while (j < lines.length) {
+          const next = (lines[j] || "").trim();
+          if (next.length === 0) {
+            j++;
+            continue;
           }
-
-          // Found actual content
-          if (nextLine.length > 0) {
-            hasContent = true;
-            nextContentIndex = j;
-            break;
-          }
+          if (isHead(next)) break;
+          hasContent = true;
+          break;
         }
-
-        // Only include the heading if there's content after it
-        if (hasContent) {
-          cleanedLines.push(currentLine);
-        } else {
-          console.log(`Removing empty heading: ${currentLine}`);
-        }
-      } else {
-        // Not a heading, include as-is
-        cleanedLines.push(currentLine);
+        if (!hasContent) continue; // skip empty heading
       }
+
+      cleaned.push(current);
     }
 
-    return cleanedLines.join("\n");
+    return cleaned
+      .join("\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
   },
 
   addResponseStructure(response, userIntent, toolsUsed) {
     // Don't restructure if it's already well-structured OR if it's too short
     if (
       (response.includes("**") && response.includes("##")) ||
-      response.length < 400
+      response.length < 200
     ) {
       return response;
     }
 
-    const intentHeaders = {
-      safety_inquiry: [
-        "**SECURITY ASSESSMENT**",
-        "**TRAVEL RECOMMENDATIONS**",
-        "**EMERGENCY PROTOCOLS**",
-      ],
-      destination_planning: [
-        "**DESTINATION OVERVIEW**",
-        "**KEY RECOMMENDATIONS**",
-        "**PLANNING ESSENTIALS**",
-      ],
-      accommodation_search: [
-        "**ACCOMMODATION OPTIONS**",
-        "**AREA ANALYSIS**",
-        "**BOOKING STRATEGY**",
-      ],
-      dining_recommendations: [
-        "**CULINARY LANDSCAPE**",
-        "**RECOMMENDED VENUES**",
-        "**LOCAL SPECIALTIES**",
-      ],
-      cultural_inquiry: [
-        "**CULTURAL CONTEXT**",
-        "**PRACTICAL GUIDANCE**",
-        "**LOCAL CUSTOMS**",
-      ],
-      weather_inquiry: [
-        "**WEATHER ANALYSIS**",
-        "**TRAVEL CONDITIONS**",
-        "**RECOMMENDATIONS**",
-      ],
-      activity_recommendations: [
-        "**ACTIVITY OVERVIEW**",
-        "**TOP RECOMMENDATIONS**",
-        "**PLANNING TIPS**",
-      ],
-    };
+    const timestamp = new Date().toLocaleTimeString();
 
-    const headers = intentHeaders[userIntent.primaryIntent.type];
-    if (!headers) return response;
-
-    // Split response into logical sections with better logic
-    const paragraphs = response.split(/\n\n+/);
-    if (paragraphs.length < 2) return response;
-
-    // Only add structure if we have enough substantial paragraphs
-    const substantialParagraphs = paragraphs.filter(
-      (p) => p.trim().length > 100
-    );
-    if (substantialParagraphs.length < 2) return response;
-
-    // Distribute content more intelligently
-    const structuredSections = [];
-    let headerIndex = 0;
-
-    substantialParagraphs.forEach((paragraph, index) => {
-      if (headerIndex < headers.length && paragraph.trim().length > 50) {
-        structuredSections.push(
-          `${headers[headerIndex]}\n\n${paragraph.trim()}`
-        );
-        headerIndex++;
-      } else {
-        // Add to last section if no more headers
-        if (structuredSections.length > 0) {
-          structuredSections[
-            structuredSections.length - 1
-          ] += `\n\n${paragraph.trim()}`;
-        } else {
-          structuredSections.push(paragraph.trim());
+    // Derive analysis tags from intent + secondary intents
+    const analysisTags = [];
+    if (userIntent?.primaryIntent?.type) {
+      const map = {
+        safety_inquiry: "Safety Intelligence",
+        weather_inquiry: "Weather Analysis",
+        cultural_inquiry: "Cultural Insights",
+        local_experiences: "Local Experiences & Attractions",
+        destination_planning: "Trip Planning",
+        accommodation_search: "Stay & Hotels",
+        dining_recommendations: "Food & Cuisine",
+        activity_recommendations: "Experiences & Activities",
+      };
+      const label =
+        map[userIntent.primaryIntent.type] || userIntent.primaryIntent.type;
+      analysisTags.push(label);
+    }
+    if (Array.isArray(userIntent?.secondaryIntents)) {
+      const seen = new Set(analysisTags);
+      userIntent.secondaryIntents.forEach((si) => {
+        const map = {
+          safety_inquiry: "Safety Intelligence",
+          weather_inquiry: "Weather Analysis",
+          cultural_inquiry: "Cultural Insights",
+          local_experiences: "Local Experiences & Attractions",
+          destination_planning: "Trip Planning",
+          accommodation_search: "Stay & Hotels",
+          dining_recommendations: "Food & Cuisine",
+          activity_recommendations: "Experiences & Activities",
+        };
+        const label = map[si.type] || si.type;
+        if (!seen.has(label)) {
+          analysisTags.push(label);
+          seen.add(label);
         }
-      }
-    });
+      });
+    }
 
-    return structuredSections.join("\n\n");
+    // Split raw response into a short summary and the rest
+    const parts = response.split(/\n{2,}/);
+    const summary = (parts[0] || "").trim();
+    const rest = parts.slice(1).join("\n\n").trim();
+
+    let pretty = `🕑 ${timestamp}\n\n`;
+
+    if (analysisTags.length) {
+      pretty += `📊 INTELLIGENCE ANALYSIS\n`;
+      analysisTags.forEach((t) => (pretty += `• ${t}\n`));
+      pretty += `\n`;
+    }
+
+    if (summary) {
+      pretty += `📑 EXECUTIVE SUMMARY\n${summary}\n\n`;
+    }
+
+    const lower = rest.toLowerCase();
+    const sections = [];
+
+    // Weather
+    if (/(weather|temperature|forecast|rain|sunny|cloud|°c|°f)/i.test(rest)) {
+      const block =
+        rest.match(/(?:weather|forecast)[:\-]?\s*([\s\S]{0,600})/i)?.[1] ||
+        rest.match(/(temperature.*?)(?:\n\n|$)/i)?.[1] ||
+        "";
+      if (block)
+        sections.push({
+          title: "🌤️ Weather Outlook",
+          content: this._bulletize(block),
+        });
+    }
+
+    // Safety
+    if (/(safety|risk|danger|security|alert|advisories|unrest)/i.test(rest)) {
+      const block =
+        rest.match(/(?:safety|security|risk)[:\-]?\s*([\s\S]{0,800})/i)?.[1] ||
+        "";
+      if (block)
+        sections.push({
+          title: "🛡️ Safety Advisory",
+          content: this._bulletize(block),
+        });
+    }
+
+    // Culture
+    if (/(culture|etiquette|customs|dress|tradition)/i.test(rest)) {
+      const block =
+        rest.match(
+          /(?:culture|etiquette|customs)[:\-]?\s*([\s\S]{0,800})/i
+        )?.[1] || "";
+      if (block)
+        sections.push({
+          title: "🕌 Cultural Etiquette",
+          content: this._bulletize(block),
+        });
+    }
+
+    // Attractions / Experiences
+    if (
+      /(attractions|places|things to do|temple|monument|museum|trek|hike)/i.test(
+        rest
+      )
+    ) {
+      const block =
+        rest.match(
+          /(?:attractions|places|things to do)[:\-]?\s*([\s\S]{0,800})/i
+        )?.[1] || "";
+      if (block)
+        sections.push({
+          title: "📍 Local Experiences & Attractions",
+          content: this._bulletize(block),
+        });
+    }
+
+    // Recommendations
+    let recBlock =
+      rest.match(
+        /(?:recommendations|tips|advice)[:\-]?\s*([\s\S]{0,800})/i
+      )?.[1] || "";
+    if (!recBlock) {
+      const derived = rest
+        .split(/\n+/)
+        .map((l) => l.trim())
+        .filter(Boolean)
+        .slice(0, 6)
+        .join(" ");
+      recBlock = derived.slice(0, 600);
+    }
+
+    pretty += `🎯 KEY RECOMMENDATIONS\n${this._bulletize(recBlock)}\n`;
+
+    if (Array.isArray(toolsUsed) && toolsUsed.length) {
+      const cleanedTools = toolsUsed
+        .map((t) =>
+          String(t || "").replace(/comprehensive_|smart_|intelligent_/g, "")
+        )
+        .filter(Boolean);
+      pretty += `\n🔧 TOOLS USED\n• ${cleanedTools.join("\n• ")}\n`;
+    }
+
+    // Append discovered sections
+    for (const s of sections) {
+      pretty += `\n${s.title}\n${s.content}\n`;
+    }
+
+    return pretty.trim();
   },
 
   extractKeyPoints(response) {
